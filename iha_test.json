@@ -1,0 +1,22 @@
+{
+  "drones": {
+    "uavs": {
+      "tuna_1": {
+        "telemetry": {
+          "altitude": 1250.5,
+          "battery": 92,
+          "speed": 85.0
+        },
+        "status": {
+          "connection_strength": 98,
+          "flight_mode": "LOITER",
+          "is_armed": true
+        },
+        "command": {
+          "action": "NONE",
+          "is_executed": true
+        }
+      }
+    }
+  }
+}

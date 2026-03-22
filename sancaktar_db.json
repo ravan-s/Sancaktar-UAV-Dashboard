@@ -1,0 +1,37 @@
+{
+  "uavs": {
+    "insan_takip": {
+      "telemetry": { "altitude": 10.5, "battery": 90, "speed": 12.0 },
+      "status": { "connection_strength": 100, "flight_mode": "AUTO", "is_armed": true },
+      "command": { "action": "TRACK_TARGET", "target_id": "person_01", "is_executed": false }
+    },
+    "kamikaze": {
+      "telemetry": { "altitude": 50.0, "battery": 100, "speed": 0.0 },
+      "status": { "connection_strength": 95, "flight_mode": "STANDBY", "is_armed": false },
+      "command": { "action": "WAIT", "target_lat": 0, "target_lon": 0, "is_executed": false }
+    },
+    "tasiyici": {
+      "telemetry": { "altitude": 25.4, "battery": 75, "speed": 4.5 },
+      "status": { "connection_strength": 88, "flight_mode": "AUTO", "is_armed": true },
+      "command": { "action": "DELIVER_CARGO", "target_lat": 39.920, "target_lon": 32.854, "is_executed": false }
+    },
+    "alan_tarama": {
+      "telemetry": { "altitude": 40.0, "battery": 60, "speed": 8.2 },
+      "status": { "connection_strength": 92, "flight_mode": "SCAN", "is_armed": true },
+      "command": { "action": "PATTERN_SEARCH", "radius": 500, "is_executed": false }
+    },
+    "tuna_1": {
+      "telemetry": { "altitude": 15.2, "battery": 84, "speed": 5.4 },
+      "status": { "connection_strength": 98, "flight_mode": "AUTO", "is_armed": true },
+      "command": { "action": "GO_TO_WAYPOINT", "target_lat": 39.920770, "target_lon": 32.854110, "is_executed": false }
+    }
+  },
+  "system_logs": {
+    "log_1": {
+      "uav_id": "system",
+      "message": "Tum filo operasyona hazir.",
+      "level": "INFO",
+      "timestamp": 1708945000
+    }
+  }
+}
