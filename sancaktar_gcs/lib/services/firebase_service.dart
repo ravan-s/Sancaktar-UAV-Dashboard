@@ -1,29 +1,86 @@
 import 'package:firebase_database/firebase_database.dart';
-import 'package:sancaktar_gcs/models/uav_model.dart';
-
+import '../models/uav_model.dart';
 
 class FirebaseService {
-  // Firebase veritabanının ana referansını (kök dizinini) alıyoruz
-  final DatabaseReference _dbRef = FirebaseDatabase.instance.ref("");
+  // Ana referans: 'uavs' düğümü
+  final DatabaseReference _dbRef = FirebaseDatabase.instance.ref("uavs");
 
-  // İHA verilerini ANLIK (canlı) dinleyen Stream (Akış)
+  // --- 1. TELEMETRİ VE TÜM VERİ AKIŞI (STREAM) ---
   Stream<Map<String, UavModel>> listenToUavs() {
-    // Sadece 'uavs' klasörünü dinle
-    return _dbRef.child('uavs').onValue.map((event) {
+    return _dbRef.onValue.map((event) {
       final Map<String, UavModel> uavList = {};
       
-      // Eğer veritabanı boş değilse
       if (event.snapshot.value != null) {
-        final data = event.snapshot.value as Map<dynamic, dynamic>;
-        
-        // Gelen JSON verisindeki her bir dronu (tuna_1, kamikaze vb.) tek tek dön
-        data.forEach((key, value) {
-          // JSON verisini, az önce yazdığımız güvenli UavModel nesnesine çevir ve listeye ekle
-          uavList[key.toString()] = UavModel.fromJson(value as Map<dynamic, dynamic>);
-        });
+        try {
+          // Firebase'den gelen ham veriyi Map'e çeviriyoruz
+          final rawData = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
+          
+          rawData.forEach((key, value) {
+            try {
+              // 'value' burada tuna_1 düğümünün tamamıdır (telemetry, status, command içerir)
+              final uavData = Map<dynamic, dynamic>.from(value as Map);
+              
+              // UavModel.fromJson doğrudan tüm düğümü (uavData) almalı
+              uavList[key.toString()] = UavModel.fromJson(uavData);
+              
+            } catch (e) {
+              print("❌ Tekil İHA Dönüştürme Hatası ($key): $e");
+            }
+          });
+        } catch (e) {
+          print("❌ Genel Veri Yapısı Hatası: $e");
+        }
       }
-      
-      return uavList; // Çevrilmiş İHA listesini Controller'a gönder
+      return uavList;
     });
+  }
+
+  // --- 2. KOMUT GÖNDERME ---
+  Future<void> sendUavCommand(String uavId, String commandType) async {
+    try {
+      // 'uavs/tuna_1/command' altına yazar. 
+      // .update() kullanıyoruz ki mevcut target_lat/lon silinmesin!
+      await _dbRef.child("$uavId/command").update({
+        "action": commandType,
+        "is_executed": false,
+        "timestamp": ServerValue.timestamp,
+      });
+      
+      // Log kaydı
+      await _logToFirebase(uavId, "$commandType komutu gönderildi.");
+      print("✅ BAŞARILI: $uavId -> $commandType");
+    } catch (e) {
+      print("⚠️ FİREBASE YAZMA HATASI: $e");
+      rethrow; 
+    }
+  }
+
+  // --- 3. KONUM GÖNDERME ---
+  Future<void> sendTargetLocation(String uavId, double lat, double lng) async {
+    try {
+      // Python 'target_lat' ve 'target_lon' bekliyor, isimleri eşitledik
+      await _dbRef.child("$uavId/command").update({
+        "action": "GOTO",
+        "target_lat": lat,
+        "target_lon": lng,
+        "is_executed": false,
+        "timestamp": ServerValue.timestamp,
+      });
+      await _logToFirebase(uavId, "Yeni hedef konum: $lat, $lng");
+    } catch (e) {
+      print("📍 Konum Gönderme Hatası: $e");
+    }
+  }
+
+  // --- 4. LOG YAZMA ---
+  Future<void> _logToFirebase(String uavId, String message) async {
+    try {
+      await FirebaseDatabase.instance.ref("flight_logs/$uavId").push().set({
+        "message": message,
+        "timestamp": ServerValue.timestamp,
+      });
+    } catch (e) {
+      print("📝 Log Hatası: $e");
+    }
   }
 }

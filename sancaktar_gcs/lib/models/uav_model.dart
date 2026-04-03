@@ -10,12 +10,11 @@ class UavModel {
   });
 
   factory UavModel.fromJson(Map<dynamic, dynamic> json) {
-    // ÇÖZÜM: Gelen veriyi "Map<dynamic, dynamic>.from()" içine alarak 
-    // Flutter'ı bunun bir Sözlük (Map) olduğuna ikna ediyoruz.
     return UavModel(
-      telemetry: Telemetry.fromJson(Map<dynamic, dynamic>.from(json['telemetry'] ?? {})),
-      status: Status.fromJson(Map<dynamic, dynamic>.from(json['status'] ?? {})),
-      command: Command.fromJson(Map<dynamic, dynamic>.from(json['command'] ?? {})),
+      // Ekran görüntündeki hiyerarşiye göre Map'e zorluyoruz
+      telemetry: Telemetry.fromJson(Map<String, dynamic>.from(json['telemetry'] ?? {})),
+      status: Status.fromJson(Map<String, dynamic>.from(json['status'] ?? {})),
+      command: Command.fromJson(Map<String, dynamic>.from(json['command'] ?? {})),
     );
   }
 }
@@ -27,8 +26,9 @@ class Telemetry {
 
   Telemetry({required this.altitude, required this.battery, required this.speed});
 
-  factory Telemetry.fromJson(Map<dynamic, dynamic> json) {
+  factory Telemetry.fromJson(Map<String, dynamic> json) {
     return Telemetry(
+      // Firebase'den gelen int/double karmaşasını toDouble() ile çözüyoruz
       altitude: (json['altitude'] ?? 0.0).toDouble(),
       battery: (json['battery'] ?? 0).toInt(),
       speed: (json['speed'] ?? 0.0).toDouble(),
@@ -47,11 +47,12 @@ class Status {
     required this.isArmed,
   });
 
-  factory Status.fromJson(Map<dynamic, dynamic> json) {
+  factory Status.fromJson(Map<String, dynamic> json) {
     return Status(
+      // ÖNEMLİ: Ekran görüntünde 'connection_strength' yazıyor, o yüzden alt tireli kullanmalısın
       connectionStrength: (json['connection_strength'] ?? 0).toInt(),
       flightMode: json['flight_mode']?.toString() ?? 'UNKNOWN',
-      isArmed: json['is_armed'] ?? false,
+      isArmed: json['is_armed'] == true,
     );
   }
 }
@@ -71,10 +72,11 @@ class Command {
     required this.radius,
   });
 
-  factory Command.fromJson(Map<dynamic, dynamic> json) {
+  factory Command.fromJson(Map<String, dynamic> json) {
     return Command(
       action: json['action']?.toString() ?? 'NONE',
-      isExecuted: json['is_executed'] ?? true,
+      isExecuted: json['is_executed'] == true,
+      // ÖNEMLİ: Ekran görüntünde 'target_lat' ve 'target_lon' yazıyor
       targetLat: (json['target_lat'] ?? 0.0).toDouble(),
       targetLon: (json['target_lon'] ?? 0.0).toDouble(),
       radius: (json['radius'] ?? 0).toInt(),

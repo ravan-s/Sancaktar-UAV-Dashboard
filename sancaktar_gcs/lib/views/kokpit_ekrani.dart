@@ -1,239 +1,234 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../controllers/uav_controller.dart'; // Dosya yolun farklıysa burayı düzeltmeyi unutma
+import '../controllers/uav_controller.dart';
 
-// --- ANA EKRAN (SAĞ VE SOLU BİRLEŞTİREN YAPI) ---
-class KokpitEkrani extends StatelessWidget {
-  const KokpitEkrani({super.key});
+class CommandCockpit extends StatelessWidget {
+  const CommandCockpit({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Beyni ekrana bağlıyoruz
-    final UavController controller = Get.put(UavController());
+    // Controller'ı buluyoruz
+    final UavController controller = Get.find<UavController>();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF030A12), // Koyu askeri lacivert arka plan
+      backgroundColor: const Color(0xFF030A12),
+      appBar: AppBar(
+        backgroundColor: Colors.black26,
+        elevation: 0,
+        title: Obx(() => Text(
+          controller.selectedUavId.value.toUpperCase(), 
+          style: const TextStyle(letterSpacing: 2, fontSize: 16)
+        )),
+      ),
       body: SafeArea(
-        child: Row(
-          children: [
-            // 1. SOL TARAF: Filo Menüsü
-            const FleetSidebar(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 20),
+              
+              Obx(() => _buildHeader(controller.selectedUavId.value)),
+              
+              const SizedBox(height: 30),
+              
+              // --- CANLI TELEMETRİ SATIRI ---
+              Obx(() {
+                final uav = controller.currentUav;
+                
+                if (uav == null) {
+                  return const Center(child: CircularProgressIndicator(color: Colors.blue));
+                }
 
-            // 2. SAĞ TARAF: Ana Kokpit Göstergeleri
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                return Row(
                   children: [
-                    const SizedBox(height: 20),
-                    _buildHeader(controller),
-                    const SizedBox(height: 40), // Kamera olmadığı için burayı biraz açtık
-                    _buildTelemetryRow(controller), // İrtifa, Hız, Batarya
-                    const Spacer(),
-                    _buildActionButtons(), // Kalkış ve İniş Butonları
-                    const SizedBox(height: 10),
-                    _buildVoiceCommand(), // Sesli Komut
-                    const SizedBox(height: 20),
+                    Expanded(child: _buildStatCard(
+                      "İRTİFA", 
+                      uav.telemetry.altitude.toStringAsFixed(1), 
+                      "METRE"
+                    )),
+                    const SizedBox(width: 15),
+                    Expanded(child: _buildStatCard(
+                      "HIZ", 
+                      uav.telemetry.speed.toStringAsFixed(1), 
+                      "KM/S"
+                    )),
+                    const SizedBox(width: 15),
+                    Expanded(child: _buildStatCard(
+                      "BATARYA", 
+                      "%${uav.telemetry.battery}", 
+                      "KAPASİTE"
+                    )),
                   ],
-                ),
+                );
+              }),
+              
+              const Spacer(),
+              
+              Center(
+                child: Obx(() => Column(
+                  children: [
+                    Icon(
+                      Icons.radar, 
+                      size: 80, 
+                      color: controller.currentUav?.status.isArmed == true ? Colors.red : Colors.blue
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      "UÇUŞ MODU: ${controller.currentUav?.status.flightMode ?? 'BEKLENİYOR'}", 
+                      style: const TextStyle(color: Colors.blue, letterSpacing: 2, fontSize: 12)
+                    ),
+                  ],
+                )),
               ),
-            ),
-          ],
+
+              const Spacer(),
+
+              _buildActionButtons(controller),
+              
+              const SizedBox(height: 10),
+              // DÜZELTİLEN YER: Buraya 'controller' parametresini ekledik
+              _buildVoiceCommand(controller), 
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // --- SAĞ TARAFIN YARDIMCI WIDGET'LARI ---
+  // --- YARDIMCI WIDGET'LAR ---
 
-  Widget _buildHeader(UavController controller) {
-    return Obx(() {
-      // Seçili İHA'nın adını dinamik olarak ekrana yazdırıyoruz
-      String activeUav = controller.selectedUavId.value.toUpperCase();
-      if (activeUav.isEmpty) activeUav = "BEKLENİYOR...";
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "SANCAKTAR KOMUTA MERKEZİ",
-            style: TextStyle(
-              color: Colors.blue.shade200,
-              fontSize: 22,
-              letterSpacing: 2,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            "AKTİF BİRİM: $activeUav",
-            style: const TextStyle(color: Colors.blueGrey, fontSize: 14),
-          ),
-        ],
-      );
-    });
-  }
-
-  Widget _buildTelemetryRow(UavController controller) {
-    return Obx(() {
-      // Veri yoksa uyarı göster
-      if (controller.uavList.isEmpty || controller.currentUav == null) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0D1621),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.red.withOpacity(0.5)),
-          ),
-          child: const Center(
-            child: Text(
-              "SİNYAL BEKLENİYOR...", 
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, letterSpacing: 2)
-            ),
-          ),
-        );
-      }
-
-      // Veri varsa seçili İHA'nın verilerini göster
-      final uav = controller.currentUav!;
-
-      return Row(
-        children: [
-          Expanded(child: _buildStatCard("İRTİFA", "${uav.telemetry.altitude}", "METRE")),
-          const SizedBox(width: 15),
-          Expanded(child: _buildStatCard("HIZ", "${uav.telemetry.speed}", "KM/S")),
-          const SizedBox(width: 15),
-          Expanded(child: _buildStatCard("BATARYA", "%${uav.telemetry.battery}", "KAPASİTE")),
-        ],
-      );
-    });
-  }
-
-  Widget _buildStatCard(String label, String value, String unit) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0D1621),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue.withOpacity(0.1)),
-      ),
-      child: Column(
-        children: [
-          Text(label, style: const TextStyle(color: Colors.blueGrey, fontSize: 12)),
-          const SizedBox(height: 12),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text(unit, style: const TextStyle(color: Colors.blueGrey, fontSize: 12)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButtons() {
-    return Row(
+  Widget _buildHeader(String droneName) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: _buildOutlinedButton("KALKIŞ (TAKE OFF)", Colors.blue)),
-        const SizedBox(width: 15),
-        Expanded(child: _buildOutlinedButton("İNİŞ (LAND)", Colors.red)),
+        const Text(
+          "SANCAKTAR KOMUTA MERKEZİ",
+          style: TextStyle(color: Colors.white, fontSize: 22, letterSpacing: 2, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          "AKTİF BAĞLANTI: ${droneName.toUpperCase()}",
+          style: const TextStyle(color: Colors.blue, fontSize: 13, fontWeight: FontWeight.w500),
+        ),
       ],
     );
   }
 
-  Widget _buildOutlinedButton(String label, Color color) {
-    return OutlinedButton(
-      style: OutlinedButton.styleFrom(
-        side: BorderSide(color: color.withOpacity(0.5)),
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      onPressed: () {
-        print("$label butonuna basıldı!"); // Daha sonra buraya Firebase komut kodu eklenecek
-      },
-      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
-    );
-  }
-
-  Widget _buildVoiceCommand() {
-    return Center(
-      child: TextButton.icon(
-        onPressed: () {},
-        icon: const Icon(Icons.mic_none, color: Colors.blueGrey),
-        label: const Text("SESLİ KOMUT", style: TextStyle(color: Colors.blueGrey)),
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// --- SOL MENÜ WIDGET'I (FİLO YÖNETİMİ) ---
-// ============================================================================
-class FleetSidebar extends StatelessWidget {
-  const FleetSidebar({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    // Controller'ı tekrar buluyoruz
-    final UavController controller = Get.find<UavController>();
-
+  Widget _buildStatCard(String label, String value, String unit) {
     return Container(
-      width: 250, // Menü genişliği
-      color: const Color(0xFF0A1118),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1621),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.blue.withOpacity(0.1)),
+      ),
       child: Column(
         children: [
-          const SizedBox(height: 30),
-          const Text(
-            "FİLO YÖNETİMİ",
-            style: TextStyle(
-              color: Colors.blueGrey,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 2,
-            ),
-          ),
+          Text(label, style: const TextStyle(color: Colors.blueGrey, fontSize: 10, letterSpacing: 1)),
           const SizedBox(height: 10),
-          const Divider(color: Colors.blueGrey, thickness: 0.5),
-          
-          Expanded(
-            child: Obx(() {
-              if (controller.uavList.isEmpty) {
-                return const Center(child: Text("Aktif İHA Yok", style: TextStyle(color: Colors.grey)));
-              }
-
-              return ListView.builder(
-                itemCount: controller.uavList.length,
-                itemBuilder: (context, index) {
-                  String uavId = controller.uavList.keys.elementAt(index);
-                  final uav = controller.uavList[uavId]!;
-                  bool isSelected = controller.selectedUavId.value == uavId;
-
-                  return ListTile(
-                    tileColor: isSelected ? Colors.blue.withOpacity(0.15) : Colors.transparent,
-                    leading: Icon(
-                      Icons.flight, 
-                      color: isSelected ? Colors.blue : Colors.blueGrey,
-                    ),
-                    title: Text(
-                      uavId.toUpperCase(),
-                      style: TextStyle(
-                        color: isSelected ? Colors.white : Colors.grey,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    subtitle: Text(
-                      "Pil: %${uav.telemetry.battery} | İrtifa: ${uav.telemetry.altitude}",
-                      style: const TextStyle(color: Colors.blueGrey, fontSize: 12),
-                    ),
-                    onTap: () {
-                      // Tıklanan dronu aktif yap!
-                      controller.selectUav(uavId);
-                    },
-                  );
-                },
-              );
-            }),
-          ),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+          Text(unit, style: const TextStyle(color: Colors.blueGrey, fontSize: 9)),
         ],
       ),
     );
+  }
+
+  Widget _buildActionButtons(UavController controller) {
+    return Row(
+      children: [
+        Expanded(child: _buildOutlinedButton(
+          "KALKIŞ (TAKE OFF)", 
+          Colors.blue, 
+          () => controller.sendCommand("TAKEOFF")
+        )),
+        const SizedBox(width: 15),
+        Expanded(child: _buildOutlinedButton(
+          "İNİŞ (LAND)", 
+          Colors.red, 
+          () => controller.sendCommand("LAND")
+        )),
+      ],
+    );
+  }
+
+  Widget _buildOutlinedButton(String label, Color color, VoidCallback onPressed) {
+    return OutlinedButton(
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: color.withOpacity(0.5)),
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      onPressed: onPressed,
+      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14)),
+    );
+  }
+
+  Widget _buildVoiceCommand(UavController controller) {
+    return Obx(() {
+      final bool isListening = controller.isListening.value;
+      final Color activeColor = isListening ? Colors.redAccent : Colors.blueGrey;
+
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (controller.lastWords.value.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Text(
+                controller.lastWords.value,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: activeColor.withOpacity(0.8),
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+
+          GestureDetector(
+            onLongPressStart: (_) => controller.toggleListening(),
+            onLongPressEnd: (_) => controller.toggleListening(),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                color: isListening ? Colors.red.withOpacity(0.1) : Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: isListening ? Colors.redAccent : Colors.blueGrey.withOpacity(0.3),
+                  width: 1.5,
+                ),
+                boxShadow: isListening ? [
+                  BoxShadow(color: Colors.red.withOpacity(0.2), blurRadius: 10, spreadRadius: 2)
+                ] : [],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isListening ? Icons.mic : Icons.mic_none,
+                    color: activeColor,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    isListening ? "DİNLENİYOR..." : "SESLİ KOMUT İÇİN BASILI TUT",
+                    style: TextStyle(
+                      color: activeColor,
+                      fontSize: 11,
+                      fontWeight: isListening ? FontWeight.bold : FontWeight.normal,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    });
   }
 }
