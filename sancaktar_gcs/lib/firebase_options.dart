@@ -4,16 +4,6 @@ import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
-/// Default [FirebaseOptions] for use with your Firebase apps.
-///
-/// Example:
-/// ```dart
-/// import 'firebase_options.dart';
-/// // ...
-/// await Firebase.initializeApp(
-///   options: DefaultFirebaseOptions.currentPlatform,
-/// );
-/// ```
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
@@ -29,10 +19,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.windows:
         return windows;
       case TargetPlatform.linux:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return linux; // ✅ Linux desteği eklendi
       default:
         throw UnsupportedError(
           'DefaultFirebaseOptions are not supported for this platform.',
@@ -46,7 +33,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '829423142948',
     projectId: 'sancaktar-2025',
     authDomain: 'sancaktar-2025.firebaseapp.com',
-    databaseURL: 'https://sancaktar-2025-default-rtdb.europe-west1.firebasedatabase.app',
+    databaseURL:
+        'https://sancaktar-2025-default-rtdb.europe-west1.firebasedatabase.app',
     storageBucket: 'sancaktar-2025.firebasestorage.app',
     measurementId: 'G-DHFWR282Q2',
   );
@@ -56,7 +44,8 @@ class DefaultFirebaseOptions {
     appId: '1:829423142948:android:fef4eca43f867eaddff0b1',
     messagingSenderId: '829423142948',
     projectId: 'sancaktar-2025',
-    databaseURL: 'https://sancaktar-2025-default-rtdb.europe-west1.firebasedatabase.app',
+    databaseURL:
+        'https://sancaktar-2025-default-rtdb.europe-west1.firebasedatabase.app',
     storageBucket: 'sancaktar-2025.firebasestorage.app',
   );
 
@@ -65,7 +54,8 @@ class DefaultFirebaseOptions {
     appId: '1:829423142948:ios:040a4f94789bd71cdff0b1',
     messagingSenderId: '829423142948',
     projectId: 'sancaktar-2025',
-    databaseURL: 'https://sancaktar-2025-default-rtdb.europe-west1.firebasedatabase.app',
+    databaseURL:
+        'https://sancaktar-2025-default-rtdb.europe-west1.firebasedatabase.app',
     storageBucket: 'sancaktar-2025.firebasestorage.app',
     iosBundleId: 'com.example.sancaktarGcs',
   );
@@ -75,7 +65,8 @@ class DefaultFirebaseOptions {
     appId: '1:829423142948:ios:040a4f94789bd71cdff0b1',
     messagingSenderId: '829423142948',
     projectId: 'sancaktar-2025',
-    databaseURL: 'https://sancaktar-2025-default-rtdb.europe-west1.firebasedatabase.app',
+    databaseURL:
+        'https://sancaktar-2025-default-rtdb.europe-west1.firebasedatabase.app',
     storageBucket: 'sancaktar-2025.firebasestorage.app',
     iosBundleId: 'com.example.sancaktarGcs',
   );
@@ -86,7 +77,21 @@ class DefaultFirebaseOptions {
     messagingSenderId: '829423142948',
     projectId: 'sancaktar-2025',
     authDomain: 'sancaktar-2025.firebaseapp.com',
-    databaseURL: 'https://sancaktar-2025-default-rtdb.europe-west1.firebasedatabase.app',
+    databaseURL:
+        'https://sancaktar-2025-default-rtdb.europe-west1.firebasedatabase.app',
+    storageBucket: 'sancaktar-2025.firebasestorage.app',
+    measurementId: 'G-Q5TGHP95JM',
+  );
+
+  // ✅ Linux — Windows ile aynı ayarlar (web SDK kullanır)
+  static const FirebaseOptions linux = FirebaseOptions(
+    apiKey: 'AIzaSyATFbBnOEuLN_cBMPhwj8RqHlvA-BeMo3g',
+    appId: '1:829423142948:web:1b5c6c5bd70f334adff0b1',
+    messagingSenderId: '829423142948',
+    projectId: 'sancaktar-2025',
+    authDomain: 'sancaktar-2025.firebaseapp.com',
+    databaseURL:
+        'https://sancaktar-2025-default-rtdb.europe-west1.firebasedatabase.app',
     storageBucket: 'sancaktar-2025.firebasestorage.app',
     measurementId: 'G-Q5TGHP95JM',
   );

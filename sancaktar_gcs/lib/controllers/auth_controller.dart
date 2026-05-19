@@ -10,7 +10,8 @@ class AuthController extends GetxController {
   // --- EKSİK OLAN DEĞİŞKENLER BURADA ---
   var userAccessLevel = 0.obs; 
   var userRole = "".obs;
-  var isLoading = false.obs; // Hata veren eksik satır buydu!
+  var isLoading = false.obs;
+  var currentUid = "".obs; // Hata veren eksik satır buydu!
 
   // Giriş yapma fonksiyonu
   Future<void> login(String username, String password) async {
@@ -21,7 +22,7 @@ class AuthController extends GetxController {
       // Kullanıcı adı hilesi
       String email = username.trim();
       if (!email.contains('@')) {
-        email = "$email@sancaktar.com";
+        email = "$email@gmail.com";
       }
 
       // Firebase girişi

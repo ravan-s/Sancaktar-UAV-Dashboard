@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/uav_controller.dart';
-import 'screens/drone_detay_ekrani.dart';// (Eğer dosyan screens klasöründe değil de views klasöründeyse 'views/drone_detay_ekrani.dart' yap)
+import 'screens/drone_detay_ekrani.dart';
+
 class AnaMenuEkrani extends StatelessWidget {
   const AnaMenuEkrani({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Controller'ı (Beyni) ekrana bağlıyoruz
     final UavController controller = Get.put(UavController());
 
     return Scaffold(
@@ -19,30 +19,27 @@ class AnaMenuEkrani extends StatelessWidget {
         elevation: 0,
       ),
       body: Obx(() {
-        // Eğer Firebase'den veri gelmediyse yükleniyor animasyonu göster
         if (controller.uavList.isEmpty) {
           return const Center(
-            child: Text("Dronlar Aranıyor...", style: TextStyle(color: Colors.blueGrey)),
+            child: Text(
+              "Dronlar Aranıyor...",
+              style: TextStyle(color: Colors.blueGrey),
+            ),
           );
         }
 
-        // Firebase'deki dronları liste olarak ekrana basıyoruz
         return ListView.builder(
           padding: const EdgeInsets.all(16),
-          itemCount: controller.uavList.length, // Firebase'de 5 dron varsa 5 kutu çizer
+          itemCount: controller.uavList.length,
           itemBuilder: (context, index) {
-            String uavId = controller.uavList.keys.elementAt(index);
-            final uav = controller.uavList[uavId]!;
+            final uavId = controller.uavList.keys.elementAt(index);
+            final uav   = controller.uavList[uavId]!;
 
-            // ... (Önceki kodların aynı kalacak, sadece Container kısmını değiştiriyoruz)
-            // ... (Üst kısımlar aynı kalıyor, Scaffold ve ListView.builder kısımları)
-
-           return GestureDetector(
+            return GestureDetector(
               onTap: () {
-                controller.selectUav(uavId); // Dronu seç
-                Get.to(() => const DroneDetayEkrani()); // Detay ekranına fırla!
+                controller.selectUav(uavId);
+                Get.to(() => const DroneDetayEkrani());
               },
-// ...
               child: Container(
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.all(20),
@@ -50,7 +47,6 @@ class AnaMenuEkrani extends StatelessWidget {
                   color: const Color(0xFF0D1621),
                   borderRadius: BorderRadius.circular(15),
                   border: Border.all(
-                    // Renkleri artık DRON İSMİNE göre alıyoruz
                     color: _getMissionColor(uavId).withOpacity(0.5),
                     width: 2,
                   ),
@@ -58,11 +54,11 @@ class AnaMenuEkrani extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ÜST KISIM
+                    // ── ÜST KISIM ──────────────────────────────
                     Row(
                       children: [
                         Icon(
-                          _getMissionIcon(uavId), // İkonlar DRON İSMİNE göre
+                          _getMissionIcon(uavId),
                           color: _getMissionColor(uavId),
                           size: 32,
                         ),
@@ -72,29 +68,80 @@ class AnaMenuEkrani extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                uavId.toUpperCase().replaceAll("_", " "), // alt tireyi boşluk yap
-                                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                                uavId.toUpperCase().replaceAll("_", " "),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                               Text(
-                                // Görev tipi yerine dronun anlık ACTION (Eylem) komutunu yazdırıyoruz!
-                                "GÖREV: ${uav.command.action}",
-                                style: TextStyle(color: _getMissionColor(uavId), fontSize: 12, letterSpacing: 1),
+                                // ✅ uav.action (eski: uav.command.action)
+                                "GÖREV: ${uav.action ?? 'BEKLEME'}",
+                                style: TextStyle(
+                                  color: _getMissionColor(uavId),
+                                  fontSize: 12,
+                                  letterSpacing: 1,
+                                ),
                               ),
                             ],
                           ),
                         ),
+                        // Online / Offline göstergesi
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: uav.isOnline ? Colors.greenAccent : Colors.red,
+                          ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 20),
-                    
-                    // ALT KISIM: Durum Belirteçleri
+                    const SizedBox(height: 12),
+
+                    // ── TELEMETRİ ÖZET ──────────────────────────
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _buildStatusBadge("ARM", uav.status.isArmed ? Colors.greenAccent : Colors.redAccent),
-                        _buildStatusBadge("BAĞLANTI", uav.status.connectionStrength > 80 ? Colors.blue : Colors.orange),
+                        _buildMiniStat(
+                          Icons.height,
+                          "${uav.altitude.toStringAsFixed(1)}m",
+                          Colors.blue,
+                        ),
+                        _buildMiniStat(
+                          Icons.speed,
+                          "${uav.speed.toStringAsFixed(1)}m/s",
+                          Colors.orange,
+                        ),
+                        _buildMiniStat(
+                          Icons.battery_charging_full,
+                          "%${uav.battery}",
+                          uav.battery > 20 ? Colors.green : Colors.red,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // ── ALT KISIM: Durum Belirteçleri ───────────
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // ✅ uav.isArmed (eski: uav.status.isArmed)
                         _buildStatusBadge(
-                          "UÇUŞ MODU: ${uav.status.flightMode}", 
+                          uav.isArmed ? "ARMED" : "DISARMED",
+                          uav.isArmed ? Colors.greenAccent : Colors.redAccent,
+                        ),
+                        // ✅ uav.connectionStrength (eski: uav.status.connectionStrength)
+                        _buildStatusBadge(
+                          "SINYAL %${uav.connectionStrength}",
+                          uav.connectionStrength > 80
+                              ? Colors.blue
+                              : Colors.orange,
+                        ),
+                        // ✅ uav.flightMode (eski: uav.status.flightMode)
+                        _buildStatusBadge(
+                          uav.flightMode,
                           Colors.purpleAccent,
                         ),
                       ],
@@ -109,31 +156,59 @@ class AnaMenuEkrani extends StatelessWidget {
     );
   }
 
-  // --- YARDIMCI FONKSİYONLAR (YENİ JSON'A GÖRE DÜZENLENDİ) ---
+  // ── YARDIMCI WİDGET'LAR ─────────────────────────────
 
-  // Dron ismine göre renk verir
-  Color _getMissionColor(String uavId) {
-    if (uavId.contains("kamikaze")) return Colors.red;
-    if (uavId.contains("tasiyici")) return Colors.orange;
-    if (uavId.contains("insan_takip")) return Colors.cyan;
-    if (uavId.contains("alan_tarama")) return Colors.green;
-    return Colors.blueGrey; // tuna_1 ve diğerleri için varsayılan
-  }
-
-  // Dron ismine göre ikon verir
-  IconData _getMissionIcon(String uavId) {
-    if (uavId.contains("kamikaze")) return Icons.crisis_alert;
-    if (uavId.contains("tasiyici")) return Icons.local_shipping;
-    if (uavId.contains("insan_takip")) return Icons.person_search;
-    if (uavId.contains("alan_tarama")) return Icons.radar;
-    return Icons.flight;
+  Widget _buildMiniStat(IconData icon, String value, Color color) {
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 14),
+        const SizedBox(width: 4),
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildStatusBadge(String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.5))),
-      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.bold,
+          fontSize: 11,
+        ),
+      ),
     );
+  }
+
+  // Dron ismine göre renk
+  Color _getMissionColor(String uavId) {
+    if (uavId.contains("kamikaze"))    return Colors.red;
+    if (uavId.contains("tasiyici"))    return Colors.orange;
+    if (uavId.contains("insan_takip")) return Colors.cyan;
+    if (uavId.contains("alan_tarama")) return Colors.green;
+    return Colors.blueGrey;
+  }
+
+  // Dron ismine göre ikon
+  IconData _getMissionIcon(String uavId) {
+    if (uavId.contains("kamikaze"))    return Icons.crisis_alert;
+    if (uavId.contains("tasiyici"))    return Icons.local_shipping;
+    if (uavId.contains("insan_takip")) return Icons.person_search;
+    if (uavId.contains("alan_tarama")) return Icons.radar;
+    return Icons.flight;
   }
 }

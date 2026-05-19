@@ -1,267 +1,253 @@
+import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:sancaktar_gcs/controllers/auth_controller.dart'; 
-import 'package:sancaktar_gcs/services/firebase_service.dart';
-import '../models/uav_model.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import '../models/uav_model.dart';
+import 'auth_controller.dart';
+import '../services/firebase_service.dart';
+import '../services/firestore_log_service.dart';
+
 
 class UavController extends GetxController {
-  final FirebaseService _firebaseService = FirebaseService();
-  final AuthController _authController = Get.find<AuthController>();
+  FirebaseServiceBase? _firebaseService;
   final stt.SpeechToText _speech = stt.SpeechToText();
-  final VoiceAssistant assistant = VoiceAssistant(); // Asistan burada
-  
-  final uavList = <String, UavModel>{}.obs; 
-  final selectedUavId = "".obs;            
-  final isListening = false.obs;           
-  final lastWords = "".obs;    
-  // Son uyarı zamanlarını tutan sözlükler
-  final Map<String, DateTime> _lastBatteryWarningTime = {};
-  final Map<String, DateTime> _lastAltitudeWarningTime = {};            
+  final VoiceAssistant assistant = VoiceAssistant();
 
-  UavModel? get currentUav {
-    if (selectedUavId.value.isEmpty) return null;
-    return uavList[selectedUavId.value];
+  AuthController? get _auth {
+    try { return Get.find<AuthController>(); } catch (_) { return null; }
+  }
+
+  final uavList           = <String, UavModel>{}.obs;
+  final selectedUavId     = ''.obs;
+  final isListening       = false.obs;
+  final lastWords         = ''.obs;
+
+  final Map<String, DateTime> _lastBatteryWarningTime  = {};
+  final Map<String, DateTime> _lastAltitudeWarningTime = {};
+
+  UavModel? get currentUav =>
+      selectedUavId.value.isEmpty ? null : uavList[selectedUavId.value];
+
+  bool get isLinuxDesktop =>
+      defaultTargetPlatform == TargetPlatform.linux && !kIsWeb;
+
+  int get _accessLevel {
+    if (isLinuxDesktop) return 5;
+    return _auth?.userAccessLevel.value ?? 0;
   }
 
   @override
   void onInit() {
     super.onInit();
-    _startListeningToFirebase();
 
-    // 🕵️‍♂️ FAILSAFE TAKİPÇİSİ (Senin istediğin yapı)
+    // FirebaseService her platformda çalışır
+    // Linux'ta REST, mobilde SDK kullanır
+   _firebaseService = createFirebaseService();
+    FirestoreLogService().start();
+    if (!isLinuxDesktop) {
+      _startListeningToFirebase();
+    } else {
+      print('ℹ️ Linux desktop — USB telemetri aktif, Firebase REST kullanılıyor');
+    }
+
     ever(uavList, (Map<String, UavModel> list) {
-      list.forEach((id, uav) {
-        _runFailSafeChecks(id, uav);
-      });
+      list.forEach((id, uav) => _runFailSafeChecks(id, uav));
     });
   }
 
-  // 🛡️ KRİTİK KONTROLLER (Batarya %30 ve İrtifa 20m)
- void _runFailSafeChecks(String id, UavModel uav) {
-    final battery = uav.telemetry.battery;
-    final altitude = uav.telemetry.altitude;
+  // ── FAİLSAFE ─────────────────────────────────────
+  void _runFailSafeChecks(String id, UavModel uav) {
     final now = DateTime.now();
-
-    // 🔋 BATARYA KONTROLÜ (%30 Altı)
-    if (battery <= 49) {
-      // Eğer daha önce hiç uyarılmadıysa veya son uyarının üzerinden 1 dakika geçtiyse
-      if (!_lastBatteryWarningTime.containsKey(id) || 
+    if (uav.battery <= 20) {
+      if (!_lastBatteryWarningTime.containsKey(id) ||
           now.difference(_lastBatteryWarningTime[id]!).inSeconds >= 40) {
-        
-        assistant.say("Dikkat! $id bataryası kritik seviyede. Yüzde $battery.");
-        _lastBatteryWarningTime[id] = now; // Zamanı kaydet (Mühürle)
+        assistant.say('Dikkat! $id bataryası kritik. Yüzde ${uav.battery}.');
+        _lastBatteryWarningTime[id] = now;
       }
     }
-
-    // 🏔️ İRTİFA KONTROLÜ (20 Metre Üstü)
-    if (altitude > 200) {
-      if (!_lastAltitudeWarningTime.containsKey(id) || 
+    if (uav.altitude > 200) {
+      if (!_lastAltitudeWarningTime.containsKey(id) ||
           now.difference(_lastAltitudeWarningTime[id]!).inMinutes >= 1) {
-        
-        assistant.say("Uyarı! $id irtifa sınırını aşıyor. Mevcut yükseklik ${altitude.toInt()} metre.");
-        _lastAltitudeWarningTime[id] = now; // Zamanı kaydet (Mühürle)
+        assistant.say('Uyarı! $id irtifa sınırını aşıyor. ${uav.altitude.toInt()} metre.');
+        _lastAltitudeWarningTime[id] = now;
       }
     }
   }
 
-  // --- 1. TELEMETRİ VERİ AKIŞI ---
+  // ── FİREBASE STREAM (Mobil) ───────────────────────
   void _startListeningToFirebase() {
-    _firebaseService.listenToUavs().listen((data) {
+    _firebaseService!.listenToUavs().listen((data) {
       uavList.assignAll(data);
-      
-      if (uavList.isNotEmpty) {
-        print("📡 Aktif Filo: ${uavList.keys.toList()}");
-
-        if (selectedUavId.value.isEmpty) {
-          if (uavList.containsKey("tuna_1")) {
-            selectedUavId.value = "tuna_1";
-          } else {
-            selectedUavId.value = uavList.keys.first;
-          }
-          print("✅ Otomatik Seçilen İHA: ${selectedUavId.value}");
-        } 
-        else if (!uavList.containsKey(selectedUavId.value)) {
-          selectedUavId.value = uavList.keys.first;
-        }
+      if (uavList.isNotEmpty && selectedUavId.value.isEmpty) {
+        selectedUavId.value = uavList.containsKey('tuna_1')
+            ? 'tuna_1' : uavList.keys.first;
       }
-    }, onError: (error) {
-      print("🚨 TELEMETRİ AKIŞ HATASI: $error");
-    });
+    }, onError: (e) => print('🚨 Firebase stream hatası: $e'));
   }
 
-  // --- 2. KOMUT GÖNDERME ---
-  void sendCommand(String commandType) {
-    if (selectedUavId.isEmpty) {
-      Get.snackbar("HATA", "Lütfen bir İHA seçin.", 
-          snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.red.withOpacity(0.5));
-      return;
-    }
-
-    if (_authController.userAccessLevel.value >= 5) {
-      _firebaseService.sendUavCommand(selectedUavId.value, commandType);
-      Get.snackbar("KOMUT", "${selectedUavId.value} -> $commandType",
-          snackPosition: SnackPosition.BOTTOM, colorText: Colors.white);
-    } else {
-      Get.snackbar("YETKİSİZ", "Bu işlem için seviye 5 yetki gereklidir.");
-    }
-  }
-
-  // --- 3. KONUM GÖNDERME ---
- // --- 3. KONUM GÖNDERME (Manuel Giriş) ---
- // --- 3. KONUM GÖNDERME (Manuel Giriş - Güncellenmiş) ---
-  // --- 3. KONUM GÖNDERME (Manuel Giriş - Nihai Versiyon) ---
-  void sendTargetPosition(double lat, double lng) {
-    // 🔍 1. KONTROL: İHA Seçili mi?
-    if (selectedUavId.isEmpty) {
-      Get.snackbar("HATA", "Lütfen önce bir İHA seçin.",
-          backgroundColor: Colors.redAccent.withOpacity(0.7), colorText: Colors.white);
-      return;
-    }
-
-    // 🔍 2. KONTROL: Yetki Seviyesi (Seviye 4)
-    if (_authController.userAccessLevel.value >= 4) {
-      
-      // 🚀 ASIL İŞLEM: Firebase'e yazma
-      FirebaseDatabase.instance.ref()
-          .child(selectedUavId.value)
-          .child('telemetry')
-          .child('target_waypoint')
-          .set({
-        'lat': lat,
-        'lon': lng,
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-      }).then((_) {
-        // 🔥 KRİTİK EKLEME: Dialog kapandıktan sonra bildirimin görünmesi için 600ms bekleme
-        Future.delayed(const Duration(milliseconds: 600), () {
-          if (Get.isSnackbarOpen) Get.back(); // Eğer açıkta kalan başka bildirim varsa temizle
-          
-          Get.snackbar(
-            "📍 HEDEF TANIMLANDI", 
-            "İHA: ${selectedUavId.value.toUpperCase()}\nKoordinat: $lat, $lng",
-            duration: const Duration(seconds: 5), // 5 saniye ekranda kalsın
-            snackPosition: SnackPosition.TOP,
-            backgroundColor: Colors.green.withOpacity(0.9),
-            colorText: Colors.white,
-            icon: const Icon(Icons.gps_fixed, color: Colors.white),
-            margin: const EdgeInsets.all(15),
-            borderColor: Colors.white.withOpacity(0.5),
-            borderWidth: 1,
-          );
-        });
-
-        // Sesli asistan ve terminal çıktısı
-        print("✅ BAŞARILI: $lat, $lng Firebase'e yazıldı.");
-        assistant.say("Yeni hedef koordinatlar manuel olarak iletildi.");
-
-      }).catchError((error) {
-        print("❌ Firebase Yazma Hatası: $error");
-        Get.snackbar("BAĞLANTI HATASI", "Veri gönderilemedi: $error", backgroundColor: Colors.red);
-      });
-
-    } else {
-      // Yetki hatası
-      Get.snackbar(
-        "YETKİSİZ", 
-        "Bu işlem için seviye 4 yetki gereklidir. Mevcut: ${_authController.userAccessLevel.value}",
-        backgroundColor: Colors.orangeAccent, 
-        colorText: Colors.black,
-        duration: const Duration(seconds: 4)
-      );
-    }
-  }
-  // --- 4. SESLİ KOMUT SİSTEMİ 
-  void toggleListening() async {
-    if (!isListening.value) {
-      bool available = await _speech.initialize(
-        onStatus: (status) {
-          if (status == "done" || status == "notListening") isListening.value = false;
-        },
-        onError: (error) => isListening.value = false,
-      );
-
-      if (available) {
-        isListening.value = true;
-        lastWords.value = "Dinleniyor...";
-        _speech.listen(
-          onResult: (result) {
-            lastWords.value = result.recognizedWords;
-            if (result.finalResult) {
-               _processVoiceCommand(result.recognizedWords.toLowerCase());
-            }
-          },
-          localeId: "tr_TR",
-        );
-      }
-    } else {
-      _stopVoiceAndReset();
-    }
-  }
+  // ── USB'DEN GELEN VERİYİ GÜNCELLE (Linux) ────────
+  void updateUavFromUsb(String droneId, UavModel uav) {
+  uavList[droneId] = uav;
   
-  void _stopVoiceAndReset() {
-    isListening.value = false;
-    _speech.stop();
-  }
+  _firebaseService?.updateTelemetry(
+    droneCode: droneId,
+    data: uav.toJson(),
+  );
 
-  void _processVoiceCommand(String command) {
-    final cmd = command.toLowerCase();
-    
-    if (cmd.contains("kalkış") || cmd.contains("havalan")) {
-      assistant.say("Anlaşıldı Kaptan. Tuna bir havalanıyor. İrtifa artırılıyor, tüm sistemler nominal.");
-      sendCommand("TAKEOFF");
-    } 
-    else if (cmd.contains("iniş") || cmd.contains("çök")) {
-      assistant.say("İniş protokolü başlatıldı. Güvenli bölgeye alçalınıyor. Gözünüz sahada olsun.");
-      sendCommand("LAND");
-    }
-    else if (cmd.contains("konum") || cmd.contains("hedefle")) {
-      assistant.say("Yeni görev koordinatları İHA'ya iletildi. Hedef Konya Teknik Üniversitesi.");
-    }
-    else if (cmd.contains("eve dön") || cmd.contains("merkez")) {
-      assistant.say("Görev iptal edildi. Ana üsse geri dönüş rotası oluşturuluyor.");
-      sendCommand("RTL");
-    }
-    else if (cmd.contains("acil") || cmd.contains("iptal")) {
-      assistant.say("Kritik uyarı! Tüm operasyon durduruldu. Acil durum moduna geçiliyor!");
-      sendCommand("EMERGENCY");
-    }
-  }
+  // ← BU SATIR VAR MI?
+  FirestoreLogService().updateBuffer(droneId, uav.toJson());
 
+  if (selectedUavId.value.isEmpty) {
+    selectedUavId.value = droneId;
+  }
+  uavList.refresh();
+}
+
+  // ── DRONE SEÇ ────────────────────────────────────
   void selectUav(String id) {
-    if (uavList.containsKey(id)) {
-      selectedUavId.value = id;
+    if (uavList.containsKey(id)) selectedUavId.value = id;
+  }
+
+  // ── KOMUT GÖNDER ─────────────────────────────────
+  void sendCommand(String commandType) {
+    FirestoreLogService().logCommand(
+  droneId: selectedUavId.value,
+  action: commandType,
+sentByUid: _auth?.currentUid.value ?? 'DESKTOP',);
+    if (selectedUavId.value.isEmpty) {
+      Get.snackbar('HATA', 'Lütfen bir İHA seçin.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.withOpacity(0.5));
+      return;
+    }
+    if (_accessLevel >= 3) {
+      _firebaseService?.sendUavCommand(selectedUavId.value, commandType);
+      Get.snackbar('KOMUT', '${selectedUavId.value} → $commandType',
+        snackPosition: SnackPosition.BOTTOM, colorText: Colors.white);
+    } else {
+      Get.snackbar('YETKİSİZ', 'Bu işlem için yetki gereklidir.');
     }
   }
 
+  // ── WAYPOINT ─────────────────────────────────────
   Future<void> sendWaypointToUav(double lat, double lng) async {
     if (selectedUavId.value.isEmpty) return;
     try {
-      await FirebaseDatabase.instance.ref()
-          .child(selectedUavId.value)
-          .child('telemetry')
-          .child('target_waypoint')
-          .set({
-        'lat': lat,
-        'lon': lng,
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-      });
-      assistant.say("Yeni koordinatlar gönderildi.");
+      await _firebaseService?.sendTargetLocation(selectedUavId.value, lat, lng);
+      assistant.say('Yeni koordinatlar gönderildi.');
     } catch (e) {
-      print("Hata: $e");
+      print('Waypoint hatası: $e');
+    }
+  }
+
+  // ── KONUM GÖNDER ─────────────────────────────────
+  void sendTargetPosition(double lat, double lng) {
+    if (selectedUavId.value.isEmpty) {
+      Get.snackbar('HATA', 'Lütfen önce bir İHA seçin.');
+      return;
+    }
+    if (_accessLevel >= 4) {
+      _firebaseService?.sendTargetLocation(selectedUavId.value, lat, lng);
+      Get.snackbar('📍 HEDEF', 'Konum iletildi: $lat, $lng',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.green.withOpacity(0.9),
+        colorText: Colors.white);
+    } else {
+      Get.snackbar('YETKİSİZ', 'Seviye 4 yetki gereklidir.');
+    }
+  }
+
+  // ── SESLİ KOMUT ──────────────────────────────────
+  void toggleListening() async {
+    if (!isListening.value) {
+      final ok = await _speech.initialize(
+        onStatus: (s) {
+          if (s == 'done' || s == 'notListening') isListening.value = false;
+        },
+        onError: (_) => isListening.value = false,
+      );
+      if (ok) {
+        isListening.value = true;
+        lastWords.value   = 'Dinleniyor...';
+        _speech.listen(
+          onResult: (r) {
+            lastWords.value = r.recognizedWords;
+            if (r.finalResult) {
+              _processVoiceCommand(r.recognizedWords.toLowerCase());
+            }
+          },
+          localeId: 'tr_TR');
+      }
+    } else {
+      isListening.value = false;
+      _speech.stop();
+    }
+  }
+
+  void _processVoiceCommand(String cmd) {
+    if (cmd.contains('kalkış') || cmd.contains('havalan')) {
+      assistant.say('Havalanıyor.'); sendCommand('TAKEOFF');
+    } else if (cmd.contains('iniş') || cmd.contains('çök')) {
+      assistant.say('İniş başlatıldı.'); sendCommand('LAND');
+    } else if (cmd.contains('eve dön') || cmd.contains('merkez')) {
+      assistant.say('Ana üsse dönüş.'); sendCommand('RTL');
+    } else if (cmd.contains('acil') || cmd.contains('iptal')) {
+      assistant.say('Durduruldu!'); sendCommand('HOLD');
+    }
+  }
+
+  // ── KONUMUMU GÖNDER ──────────────────────────────
+  Future<void> sendMyCurrentLocation() async {
+    if (selectedUavId.value.isEmpty) {
+      Get.snackbar('HATA', 'Lütfen önce bir İHA seçin.');
+      return;
+    }
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.always ||
+          perm == LocationPermission.whileInUse) {
+        final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+        sendTargetPosition(pos.latitude, pos.longitude);
+        assistant.say('Operatör konumu alındı.');
+      } else {
+        Get.snackbar('İZİN REDDEDİLDİ', 'GPS izni gereklidir.');
+      }
+    } catch (e) {
+      Get.snackbar('GPS HATASI', 'Konum alınamadı: $e');
     }
   }
 }
 
+// ── SESLİ ASISTAN ────────────────────────────────────
 class VoiceAssistant {
-  final FlutterTts _tts = FlutterTts();
-  VoiceAssistant() {
-    _tts.setLanguage("tr-TR");
-    _tts.setPitch(1.0);
-    _tts.setSpeechRate(0.5);
+  dynamic _tts;
+
+  VoiceAssistant() { _initTts(); }
+
+  Future<void> _initTts() async {
+    if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
+      print('ℹ️ TTS Linux desteklemiyor.');
+      return;
+    }
+    try {
+      final tts = FlutterTts();
+      await tts.setLanguage('tr-TR');
+      await tts.setPitch(1.0);
+      await tts.setSpeechRate(0.5);
+      _tts = tts;
+    } catch (e) {
+      print('TTS başlatma hatası: $e');
+    }
   }
+
   Future<void> say(String text) async {
+    if (_tts == null) { print('🔊 TTS: $text'); return; }
     await _tts.speak(text);
   }
 }
