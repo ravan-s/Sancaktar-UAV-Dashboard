@@ -13,10 +13,15 @@ class DroneDetayEkrani extends StatelessWidget {
       backgroundColor: const Color(0xFF0A0F18),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D1621),
-        title: Obx(() => Text(
-          "${controller.selectedUavId.value.toUpperCase()} KONTROL PANELİ",
-          style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5),
-        )),
+        title: Obx(
+          () => Text(
+            "${controller.selectedUavId.value.toUpperCase()} KONTROL PANELİ",
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.5,
+            ),
+          ),
+        ),
         centerTitle: true,
         elevation: 0,
       ),
@@ -181,7 +186,10 @@ class DroneDetayEkrani extends StatelessWidget {
                           children: [
                             const Text(
                               "Komut",
-                              style: TextStyle(color: Colors.white54, fontSize: 10),
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 10,
+                              ),
                             ),
                             Text(
                               uav.action ?? "BEKLEME",
@@ -210,7 +218,9 @@ class DroneDetayEkrani extends StatelessWidget {
                                 ? "🔴 ARMED (AKTİF)"
                                 : "🟢 DISARMED (PASİF)",
                             style: TextStyle(
-                              color: uav.isArmed ? Colors.redAccent : Colors.green,
+                              color: uav.isArmed
+                                  ? Colors.redAccent
+                                  : Colors.green,
                               fontWeight: FontWeight.bold,
                               fontSize: 12,
                             ),
@@ -222,11 +232,18 @@ class DroneDetayEkrani extends StatelessWidget {
                     // Uçuş modu
                     Row(
                       children: [
-                        const Icon(Icons.flight_takeoff, color: Colors.cyan, size: 18),
+                        const Icon(
+                          Icons.flight_takeoff,
+                          color: Colors.cyan,
+                          size: 18,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           "Mod: ${uav.flightMode}",
-                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),

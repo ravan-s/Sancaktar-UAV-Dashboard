@@ -7,7 +7,6 @@ import '../models/uav_model.dart';
 import 'firebase_service.dart';
 
 class FirebaseServiceRest extends FirebaseServiceBase {
-  // Senin Firebase proje URL'in
   static const _dbUrl =
       'https://sancaktar-2025-default-rtdb.europe-west1.firebasedatabase.app';
 
@@ -18,7 +17,6 @@ class FirebaseServiceRest extends FirebaseServiceBase {
     required Map<String, dynamic> data,
   }) async {
     try {
-      // Anlık durum güncelle
       await http.patch(
         Uri.parse('$_dbUrl/uavs/$droneCode.json'),
         headers: {'Content-Type': 'application/json'},
@@ -33,7 +31,6 @@ class FirebaseServiceRest extends FirebaseServiceBase {
   }
 
   // ── 2. DRONE DİNLE ───────────────────────────────
-  // Linux sadece yazar — dinleme gerekmez
   @override
   Stream<Map<String, UavModel>> listenToUavs() {
     return Stream.value({});
@@ -47,10 +44,10 @@ class FirebaseServiceRest extends FirebaseServiceBase {
     Map<String, dynamic> extraParams = const {},
   }) async {
     final payload = <String, dynamic>{
-      'action':      commandType,
+      'action': commandType,
       'is_executed': false,
       'sent_by_uid': 'DESKTOP_STATION',
-      'timestamp':   {'.sv': 'timestamp'},
+      'timestamp': {'.sv': 'timestamp'},
       ...extraParams,
     };
 
@@ -75,16 +72,51 @@ class FirebaseServiceRest extends FirebaseServiceBase {
     double? altitude,
   }) async {
     final action = uavId == 'tuna_1' ? 'GO_TO_WAYPOINT' : 'GOTO';
-    await sendUavCommand(uavId, action, extraParams: {
-      'target_lat': lat,
-      'target_lon': lng,
-      if (altitude != null) 'altitude': altitude,
-    });
+    await sendUavCommand(
+      uavId,
+      action,
+      extraParams: {
+        'target_lat': lat,
+        'target_lon': lng,
+        if (altitude != null) 'altitude': altitude,
+      },
+    );
   }
 
   // ── 5. ROL SEVİYESİ ──────────────────────────────
   @override
   Future<int> getUserRoleLevel() async {
     return 5; // Yer istasyonu tam yetkili
+  }
+
+  // ── 6. ALAN TARAMA GÖREVİ ────────────────────────
+  @override
+  Future<void> sendScanMission({
+    required String droneId,
+    required String pattern,
+    required List<Map<String, double>> waypoints,
+    required double altitude,
+    required double speed,
+  }) async {
+    try {
+      await http.put(
+        Uri.parse('$_dbUrl/uavs/$droneId/mission/scan.json'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'pattern': pattern,
+          'waypoints': waypoints,
+          'altitude': altitude,
+          'speed': speed,
+          'status': 'pending',
+          'sent_by_uid': 'DESKTOP_STATION',
+          'timestamp': {'.sv': 'timestamp'},
+        }),
+      );
+      print(
+        '✅ REST tarama görevi: $droneId → $pattern (${waypoints.length} wp)',
+      );
+    } catch (e) {
+      print('❌ REST tarama hatası: $e');
+    }
   }
 }

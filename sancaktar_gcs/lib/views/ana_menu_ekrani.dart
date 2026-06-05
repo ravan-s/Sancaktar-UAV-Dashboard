@@ -33,12 +33,12 @@ class AnaMenuEkrani extends StatelessWidget {
           itemCount: controller.uavList.length,
           itemBuilder: (context, index) {
             final uavId = controller.uavList.keys.elementAt(index);
-            final uav   = controller.uavList[uavId]!;
+            final uav = controller.uavList[uavId]!;
 
             return GestureDetector(
               onTap: () {
                 controller.selectUav(uavId);
-                Get.to(() => const DroneDetayEkrani());
+                Get.toNamed('/cockpit', arguments: uavId);
               },
               child: Container(
                 margin: const EdgeInsets.only(bottom: 16),
@@ -93,7 +93,9 @@ class AnaMenuEkrani extends StatelessWidget {
                           height: 10,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: uav.isOnline ? Colors.greenAccent : Colors.red,
+                            color: uav.isOnline
+                                ? Colors.greenAccent
+                                : Colors.red,
                           ),
                         ),
                       ],
@@ -140,10 +142,7 @@ class AnaMenuEkrani extends StatelessWidget {
                               : Colors.orange,
                         ),
                         // ✅ uav.flightMode (eski: uav.status.flightMode)
-                        _buildStatusBadge(
-                          uav.flightMode,
-                          Colors.purpleAccent,
-                        ),
+                        _buildStatusBadge(uav.flightMode, Colors.purpleAccent),
                       ],
                     ),
                   ],
@@ -196,8 +195,8 @@ class AnaMenuEkrani extends StatelessWidget {
 
   // Dron ismine göre renk
   Color _getMissionColor(String uavId) {
-    if (uavId.contains("kamikaze"))    return Colors.red;
-    if (uavId.contains("tasiyici"))    return Colors.orange;
+    if (uavId.contains("kamikaze")) return Colors.red;
+    if (uavId.contains("tasiyici")) return Colors.orange;
     if (uavId.contains("insan_takip")) return Colors.cyan;
     if (uavId.contains("alan_tarama")) return Colors.green;
     return Colors.blueGrey;
@@ -205,8 +204,8 @@ class AnaMenuEkrani extends StatelessWidget {
 
   // Dron ismine göre ikon
   IconData _getMissionIcon(String uavId) {
-    if (uavId.contains("kamikaze"))    return Icons.crisis_alert;
-    if (uavId.contains("tasiyici"))    return Icons.local_shipping;
+    if (uavId.contains("kamikaze")) return Icons.crisis_alert;
+    if (uavId.contains("tasiyici")) return Icons.local_shipping;
     if (uavId.contains("insan_takip")) return Icons.person_search;
     if (uavId.contains("alan_tarama")) return Icons.radar;
     return Icons.flight;

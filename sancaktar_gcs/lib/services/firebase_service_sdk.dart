@@ -16,9 +16,10 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
     required Map<String, dynamic> data,
   }) async {
     try {
-      await FirebaseDatabase.instance
-          .ref('uavs/$droneCode')
-          .update({...data, 'last_update': ServerValue.timestamp});
+      await FirebaseDatabase.instance.ref('uavs/uavs/$droneCode').update({
+        ...data,
+        'last_update': ServerValue.timestamp,
+      });
     } catch (e) {
       print('❌ SDK telemetri hatası: $e');
     }
@@ -27,7 +28,7 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
   // ── 2. DRONE DİNLE (WebSocket) ───────────────────
   @override
   Stream<Map<String, UavModel>> listenToUavs() {
-    return FirebaseDatabase.instance.ref('uavs').onValue.map((event) {
+    return FirebaseDatabase.instance.ref('uavs/uavs').onValue.map((event) {
       final result = <String, UavModel>{};
       final raw = event.snapshot.value as Map?;
       if (raw == null) return result;
@@ -56,25 +57,21 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
     _checkAllowed(uavId, commandType);
 
     final payload = <String, dynamic>{
-      'action':      commandType,
+      'action': commandType,
       'is_executed': false,
       'sent_by_uid': _uid,
-      'timestamp':   ServerValue.timestamp,
+      'timestamp': ServerValue.timestamp,
       ...extraParams,
     };
 
     await FirebaseDatabase.instance
-        .ref('uavs/$uavId/command')
+        .ref('uavs/uavs/$uavId/command')
         .update(payload);
 
-    // Log
-    await FirebaseDatabase.instance
-        .ref('flight_logs/$uavId')
-        .push()
-        .set({
-      'message':     '$commandType komutu gönderildi.',
+    await FirebaseDatabase.instance.ref('flight_logs/$uavId').push().set({
+      'message': '$commandType komutu gönderildi.',
       'sent_by_uid': _uid,
-      'timestamp':   ServerValue.timestamp,
+      'timestamp': ServerValue.timestamp,
     });
 
     print('✅ SDK komut: $uavId → $commandType');
@@ -92,11 +89,15 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
       throw Exception('Geçersiz koordinat: $lat, $lng');
     }
     final action = uavId == 'tuna_1' ? 'GO_TO_WAYPOINT' : 'GOTO';
-    await sendUavCommand(uavId, action, extraParams: {
-      'target_lat': lat,
-      'target_lon': lng,
-      if (altitude != null) 'altitude': altitude,
-    });
+    await sendUavCommand(
+      uavId,
+      action,
+      extraParams: {
+        'target_lat': lat,
+        'target_lon': lng,
+        if (altitude != null) 'altitude': altitude,
+      },
+    );
   }
 
   // ── 5. ROL SEVİYESİ ──────────────────────────────
@@ -109,20 +110,58 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
     return (snap.value as int?) ?? 1;
   }
 
+  // ── 6. ALAN TARAMA GÖREVİ ────────────────────────
+  @override
+  Future<void> sendScanMission({
+    required String droneId,
+    required String pattern,
+    required List<Map<String, double>> waypoints,
+    required double altitude,
+    required double speed,
+  }) async {
+    _checkAuth();
+
+    await FirebaseDatabase.instance.ref('uavs/uavs/$droneId/mission/scan').set({
+      'pattern': pattern,
+      'waypoints': waypoints,
+      'altitude': altitude,
+      'speed': speed,
+      'status': 'pending',
+      'sent_by_uid': _uid,
+      'timestamp': ServerValue.timestamp,
+    });
+
+    await FirebaseDatabase.instance.ref('flight_logs/$droneId').push().set({
+      'message': 'Alan tarama görevi: $pattern, ${waypoints.length} waypoint.',
+      'sent_by_uid': _uid,
+      'timestamp': ServerValue.timestamp,
+    });
+
+    print('✅ Tarama görevi: $droneId → $pattern (${waypoints.length} wp)');
+  }
+
   // ── YARDIMCILAR ──────────────────────────────────
   void _checkAuth() {
     if (_uid == null) throw Exception('Kullanıcı oturumu yok.');
   }
 
   void _checkAllowed(String uavId, String command) {
-    const common = {'HOLD', 'RTL', 'LAND', 'ARM', 'DISARM', 'GOTO'};
+    const common = {
+      'HOLD',
+      'RTL',
+      'LAND',
+      'ARM',
+      'DISARM',
+      'GOTO',
+      'SCAN_ABORT',
+    };
     final allowed = <String>{
       ...common,
       if (uavId == 'insan_takip') 'TRACK_TARGET',
-      if (uavId == 'kamikaze')    ...{'WAIT', 'ENGAGE'},
-      if (uavId == 'tasiyici')    'DELIVER_CARGO',
+      if (uavId == 'kamikaze') ...{'WAIT', 'ENGAGE'},
+      if (uavId == 'tasiyici') 'DELIVER_CARGO',
       if (uavId == 'alan_tarama') 'PATTERN_SEARCH',
-      if (uavId == 'tuna_1')      'GO_TO_WAYPOINT',
+      if (uavId == 'tuna_1') 'GO_TO_WAYPOINT',
     };
     if (!allowed.contains(command)) {
       throw Exception('Geçersiz komut: $command');

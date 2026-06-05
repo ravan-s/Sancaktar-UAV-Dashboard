@@ -41,4 +41,13 @@ abstract class FirebaseServiceBase {
 
   // Rol seviyesi
   Future<int> getUserRoleLevel();
+
+  // Alan tarama görevi gönder  // YENİ
+  Future<void> sendScanMission({
+    required String droneId,
+    required String pattern,
+    required List<Map<String, double>> waypoints,
+    required double altitude,
+    required double speed,
+  });
 }

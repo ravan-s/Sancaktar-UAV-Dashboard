@@ -1,237 +1,180 @@
-import 'dart:async';
-import 'dart:typed_data';
-import 'package:flutter_libserialport/flutter_libserialport.dart';
-import '../controllers/uav_controller.dart';
+import 'package:flutter/foundation.dart';
 import '../models/uav_model.dart';
-import 'package:get/get.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
-class TelemetryService {
-  static final TelemetryService _instance = TelemetryService._internal();
-  factory TelemetryService() => _instance;
-  TelemetryService._internal();
+// ── PLATFORM FACTORY ─────────────────────────────────────────
+FirebaseServiceBase createFirebaseService() {
+  if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
+    return FirebaseServiceRest(); // Linux desktop → REST
+  }
+  return FirebaseServiceSdk(); // iOS / Android → SDK
+}
 
-  SerialPort?         _port;
-  SerialPortReader?   _reader;
-  StreamSubscription? _sub;
-  String?             _activeDroneId;
+// ── ABSTRACT BASE ─────────────────────────────────────────────
+abstract class FirebaseServiceBase {
+  /// drones/{drone_id}/telemetry  stream'ini dinler
+  Stream<Map<String, UavModel>> listenToUavs();
 
-  final Map<String, dynamic> _cache = {};
-  final List<int>            _buffer = [];
+  /// drones/{drone_id}/command  altına komut yazar
+  /// Raspberry Pi bu node'u dinler, DroneKit'e iletir.
+  Future<void> sendUavCommand(
+    String droneId,
+    String commandType, {
+    Map<String, dynamic>? extra,
+  });
 
-  static List<String> getAvailablePorts() => SerialPort.availablePorts;
+  /// drones/{drone_id}/command  altına waypoint yazar
+  Future<void> sendTargetLocation(
+    String droneId,
+    double lat,
+    double lng, {
+    double alt = 10,
+  });
+}
 
-  Future<bool> connect(String portName, String droneId) async {
-    try {
-      disconnect();
-      _port = SerialPort(portName);
-      if (!_port!.openReadWrite()) {
-        print('❌ Port açılamadı: $portName');
-        return false;
-      }
-      final config    = SerialPortConfig();
-      config.baudRate = 57600;
-      config.bits     = 8;
-      config.stopBits = 1;
-      config.parity   = SerialPortParity.none;
-      _port!.config   = config;
+// ── REST İMPLEMENTASYONU (Linux) ─────────────────────────────
 
-      _activeDroneId = droneId;
-      _reader        = SerialPortReader(_port!);
-      _sub           = _reader!.stream.listen((data) {
-        _parseMavlink(data, droneId);
-      });
+class FirebaseServiceRest extends FirebaseServiceBase {
+  static const _baseUrl =
+      'https://<YOUR-PROJECT>.firebaseio.com'; // kendi URL'in
+  static const _secret =
+      ''; // opsiyonel: DB secret (rules izin veriyorsa boş bırak)
 
-      print('✅ USB bağlantı: $portName → $droneId');
-      unawaited(_requestDataStreams());
-      return true;
-    } catch (e) {
-      print('❌ Bağlantı hatası: $e');
-      return false;
-    }
+  String get _auth => _secret.isNotEmpty ? '?auth=$_secret' : '';
+
+  // ── Stream: Server-Sent Events (SSE) ─────────────────────────
+  @override
+  Stream<Map<String, UavModel>> listenToUavs() {
+    final controller = StreamController<Map<String, UavModel>>();
+    _startSseLoop(controller);
+    return controller.stream;
   }
 
-  Future<void> _requestDataStreams() async {
-    await Future.delayed(const Duration(seconds: 2));
-    final streams = [
-      {'id': 1,  'rate': 2},
-      {'id': 2,  'rate': 2},
-      {'id': 6,  'rate': 5},
-      {'id': 10, 'rate': 5},
-      {'id': 11, 'rate': 2},
-    ];
-    for (final s in streams) {
-      final packet = _buildRequestStream(s['id']!, s['rate']!);
-      _port?.write(Uint8List.fromList(packet));
-      await Future.delayed(const Duration(milliseconds: 100));
-      print('📡 Stream istendi: ID=${s['id']} rate=${s['rate']}Hz');
-    }
-  }
+  void _startSseLoop(StreamController<Map<String, UavModel>> sc) async {
+    while (!sc.isClosed) {
+      try {
+        final uri = Uri.parse('$_baseUrl/drones.json$_auth');
+        final response = await http.get(
+          uri,
+          headers: {'Accept': 'text/event-stream', 'Cache-Control': 'no-cache'},
+        );
 
-  List<int> _buildRequestStream(int streamId, int rate) {
-    final payload = [
-      rate & 0xFF, (rate >> 8) & 0xFF,
-      0xFF, 0xFF,
-      streamId,
-      1,
-    ];
-    final header = [
-      0xFE, payload.length, 0, 255, 190, 66,
-    ];
-    final crc = _mavlinkCrc([...header.sublist(1), ...payload], 148);
-    return [...header, ...payload, crc & 0xFF, (crc >> 8) & 0xFF];
-  }
-
-  int _mavlinkCrc(List<int> data, int crcExtra) {
-    int crc = 0xFFFF;
-    for (final byte in data) {
-      int tmp = byte ^ (crc & 0xFF);
-      tmp ^= (tmp << 4) & 0xFF;
-      crc = ((crc >> 8) ^ (tmp << 8) ^ (tmp << 3) ^ (tmp >> 4)) & 0xFFFF;
-    }
-    int tmp = crcExtra ^ (crc & 0xFF);
-    tmp ^= (tmp << 4) & 0xFF;
-    crc = ((crc >> 8) ^ (tmp << 8) ^ (tmp << 3) ^ (tmp >> 4)) & 0xFFFF;
-    return crc;
-  }
-
-  void _parseMavlink(Uint8List data, String droneId) {
-    try {
-      final buf = Uint8List.fromList([..._buffer, ...data]);
-      _buffer.clear();
-      int i = 0;
-      while (i < buf.length) {
-        if (buf[i] == 0xFE) {
-          if (i + 8 > buf.length) { _buffer.addAll(buf.sublist(i)); break; }
-          final msgLen = buf[i + 1];
-          final total  = 8 + msgLen;
-          if (i + total > buf.length) { _buffer.addAll(buf.sublist(i)); break; }
-          final msgId   = buf[i + 5];
-          final payload = buf.sublist(i + 6, i + 6 + msgLen);
-          _handleMessage(msgId, payload, droneId);
-          i += total;
-        } else if (buf[i] == 0xFD) {
-          if (i + 10 > buf.length) { _buffer.addAll(buf.sublist(i)); break; }
-          final msgLen = buf[i + 1];
-          final total  = 12 + msgLen;
-          if (i + total > buf.length) { _buffer.addAll(buf.sublist(i)); break; }
-          final msgId   = buf[i + 7] | (buf[i + 8] << 8) | (buf[i + 9] << 16);
-          final payload = buf.sublist(i + 10, i + 10 + msgLen);
-          _handleMessage(msgId, payload, droneId);
-          i += total;
-        } else {
-          i++;
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body) as Map<String, dynamic>?;
+          if (data != null) {
+            final result = <String, UavModel>{};
+            data.forEach((droneId, value) {
+              if (value is Map) {
+                final telemetry = value['telemetry'];
+                if (telemetry is Map) {
+                  result[droneId] = UavModel.fromJson(
+                    Map<String, dynamic>.from(telemetry),
+                  );
+                }
+              }
+            });
+            if (!sc.isClosed) sc.add(result);
+          }
         }
+      } catch (e) {
+        debugPrint('REST poll hatası: $e');
       }
-    } catch (e) {
-      print('Parse hatası: $e');
+      await Future.delayed(const Duration(seconds: 1)); // 1 Hz polling
     }
   }
 
-  void _handleMessage(int msgId, Uint8List payload, String droneId) {
-    switch (msgId) {
-      case 0:   _handleHeartbeat(payload, droneId);     break;
-      case 1:   _handleSysStatus(payload, droneId);     break;
-      case 30:  _handleAttitude(payload, droneId);      break;
-      case 33:  _handlePosition(payload, droneId);      break;
-      case 74:  _handleVfrHud(payload, droneId);        break;
-      case 147: _handleBatteryStatus(payload, droneId); break;
-    }
+  // ── Komut Gönder ─────────────────────────────────────────────
+  @override
+  Future<void> sendUavCommand(
+    String droneId,
+    String commandType, {
+    Map<String, dynamic>? extra,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/drones/$droneId/command.json$_auth');
+    final body = json.encode({
+      'action': commandType,
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      ...?extra,
+    });
+    await http.put(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: body,
+    );
   }
 
-  void _handleHeartbeat(Uint8List p, String droneId) {
-    if (p.length < 6) return;
-    final bd       = p.buffer.asByteData(p.offsetInBytes);
-    final baseMode = p.length > 6 ? p[6] : 0;
-    _cache['is_armed']            = (baseMode & 0x80) != 0;
-    _cache['flight_mode']         = _flightMode(bd.getUint32(0, Endian.little));
-    _cache['connection_strength'] = 100;
-    print('💓 Heartbeat — armed: ${_cache['is_armed']}, mode: ${_cache['flight_mode']}');
-    _updateController(droneId);
+  // ── Waypoint Gönder ──────────────────────────────────────────
+  @override
+  Future<void> sendTargetLocation(
+    String droneId,
+    double lat,
+    double lng, {
+    double alt = 10,
+  }) async {
+    await sendUavCommand(
+      droneId,
+      'WAYPOINT',
+      extra: {'lat': lat, 'lng': lng, 'alt': alt},
+    );
+  }
+}
+
+// ── SDK İMPLEMENTASYONU (iOS / Android) ──────────────────────
+
+class FirebaseServiceSdk extends FirebaseServiceBase {
+  final _db = FirebaseDatabase.instance;
+
+  // ── Stream: onValue listener ─────────────────────────────────
+  @override
+  Stream<Map<String, UavModel>> listenToUavs() {
+    return _db.ref('drones').onValue.map((event) {
+      final result = <String, UavModel>{};
+      final data = event.snapshot.value as Map<dynamic, dynamic>?;
+      if (data == null) return result;
+
+      data.forEach((droneId, value) {
+        if (value is Map) {
+          final telemetry = value['telemetry'];
+          if (telemetry is Map) {
+            result[droneId.toString()] = UavModel.fromJson(
+              Map<String, dynamic>.from(telemetry),
+            );
+          }
+        }
+      });
+      return result;
+    });
   }
 
-  void _handleSysStatus(Uint8List p, String droneId) {
-    if (p.length < 9) return;
-    final bd      = p.buffer.asByteData(p.offsetInBytes);
-    final voltage = p.length >= 16 ? bd.getUint16(14, Endian.little) / 1000.0 : 0.0;
-    final pct     = p.length >= 31 ? bd.getInt8(30) : -1;
-    _cache['battery_volt'] = voltage;
-    _cache['battery']      = (pct < 0 || pct > 100) ? null : pct;
-    _updateController(droneId);
+  // ── Komut Gönder ─────────────────────────────────────────────
+  @override
+  Future<void> sendUavCommand(
+    String droneId,
+    String commandType, {
+    Map<String, dynamic>? extra,
+  }) async {
+    await _db.ref('drones/$droneId/command').set({
+      'action': commandType,
+      'timestamp': ServerValue.timestamp,
+      ...?extra,
+    });
   }
 
-  void _handleAttitude(Uint8List p, String droneId) {
-    if (p.length < 24) return;
-    final bd    = p.buffer.asByteData(p.offsetInBytes);
-    _cache['roll']  = bd.getFloat32(4, Endian.little) * 180 / 3.14159;
-    _cache['pitch'] = bd.getFloat32(8, Endian.little) * 180 / 3.14159;
-    _updateController(droneId);
+  // ── Waypoint Gönder ──────────────────────────────────────────
+  @override
+  Future<void> sendTargetLocation(
+    String droneId,
+    double lat,
+    double lng, {
+    double alt = 10,
+  }) async {
+    await sendUavCommand(
+      droneId,
+      'WAYPOINT',
+      extra: {'lat': lat, 'lng': lng, 'alt': alt},
+    );
   }
-
-  void _handlePosition(Uint8List p, String droneId) {
-    if (p.length < 28) return;
-    final bd = p.buffer.asByteData(p.offsetInBytes);
-    _cache['lat'] = bd.getInt32(0, Endian.little) / 1e7;
-    _cache['lon'] = bd.getInt32(4, Endian.little) / 1e7;
-    _cache['alt'] = bd.getInt32(8, Endian.little) / 1000.0;
-    _updateController(droneId);
-  }
-
-  void _handleVfrHud(Uint8List p, String droneId) {
-    if (p.length < 20) return;
-    _cache['speed'] = p.buffer.asByteData(p.offsetInBytes)
-        .getFloat32(0, Endian.little);
-    _updateController(droneId);
-  }
-
-  void _handleBatteryStatus(Uint8List p, String droneId) {
-    if (p.length < 6) return;
-    final bd   = p.buffer.asByteData(p.offsetInBytes);
-    final pct  = p.length > 33 ? p[33] : -1;
-    final mv   = bd.getUint16(4, Endian.little);
-    _cache['battery']      = (pct < 0 || pct > 100) ? 0 : pct;
-    _cache['battery_volt'] = mv == 0xFFFF ? 0.0 : mv / 1000.0;
-    _updateController(droneId);
-  }
-
-  void _updateController(String droneId) {
-    try {
-      final ctrl = Get.find<UavController>();
-      ctrl.updateUavFromUsb(droneId, UavModel(
-        lat:               _cache['lat'],
-        lon:               _cache['lon'],
-        altitude:          (_cache['alt']          as num?)?.toDouble() ?? 0.0,
-        speed:             (_cache['speed']         as num?)?.toDouble() ?? 0.0,
-        battery:           (_cache['battery']       as num?)?.toInt()    ?? 0,
-        battery_volt:      (_cache['battery_volt']  as num?)?.toDouble() ?? 0.0,
-        isArmed:           _cache['is_armed']       ?? false,
-        flightMode:        _cache['flight_mode']    ?? 'UNKNOWN',
-        connectionStrength: 100,
-      ));
-    } catch (_) {}
-  }
-
-  String _flightMode(int mode) {
-    const modes = {
-      0: 'STABILIZE', 2: 'ALT_HOLD', 3: 'AUTO',
-      4: 'GUIDED',    5: 'LOITER',   6: 'RTL',
-      9: 'LAND',      16: 'POSHOLD',
-    };
-    return modes[mode] ?? 'UNKNOWN';
-  }
-
-  void disconnect() {
-    _sub?.cancel();
-    _reader = null;
-    try {
-      _port?.close();
-      _port?.dispose();
-    } catch (_) {}
-    _port          = null;
-    _activeDroneId = null;
-    _cache.clear();
-    print('🔌 USB bağlantısı kesildi.');
-  }
-
-  bool    get isConnected   => _port?.isOpen == true;
-  String? get activeDroneId => _activeDroneId;
 }
