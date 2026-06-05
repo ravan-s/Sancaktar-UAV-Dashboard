@@ -8,7 +8,7 @@ class AuthController extends GetxController {
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
 
   // --- EKSİK OLAN DEĞİŞKENLER BURADA ---
-  var userAccessLevel = 0.obs; 
+  var userAccessLevel = 0.obs;
   var userRole = "".obs;
   var isLoading = false.obs;
   var currentUid = "".obs; // Hata veren eksik satır buydu!
@@ -32,25 +32,40 @@ class AuthController extends GetxController {
       );
 
       // Veritabanından yetki kontrolü
-      DataSnapshot snapshot = await _dbRef.child("users/${userCredential.user!.uid}").get();
+      DataSnapshot snapshot = await _dbRef
+          .child("users/${userCredential.user!.uid}")
+          .get();
 
       if (snapshot.exists) {
         final data = Map<dynamic, dynamic>.from(snapshot.value as Map);
-        userAccessLevel.value = data['access_level'] ?? 1;
+        userAccessLevel.value =
+            int.tryParse(data['access_level'].toString()) ?? 1;
         userRole.value = data['role'] ?? "guest";
-        // Eski hali: Get.offAllNamed('/cockpit');
+        currentUid.value = userCredential.user!.uid;
+
         Get.offAllNamed('/fleet'); // Yeni hali bu olmalı
         // Giriş başarılı, Kokpit'e uçuyoruz
-        
+        debugPrint('🔑 RAW data: $data');
+        debugPrint('🔑 access_level raw: ${data['access_level']}');
+        debugPrint('🔑 access_level type: ${data['access_level'].runtimeType}');
+
+        userAccessLevel.value =
+            int.tryParse(data['access_level'].toString()) ?? 1;
+        userRole.value = data['role'] ?? "guest";
+        currentUid.value = userCredential.user!.uid;
+
+        debugPrint('🔑 userAccessLevel after set: ${userAccessLevel.value}');
+
+        Get.offAllNamed('/fleet');
       } else {
         Get.snackbar("SİSTEM HATASI", "Kullanıcı veritabanında bulunamadı.");
       }
     } catch (e) {
       Get.snackbar(
-        "GİRİŞ HATASI", 
+        "GİRİŞ HATASI",
         "Kullanıcı adı veya şifre hatalı.",
         backgroundColor: Colors.red.withOpacity(0.7),
-        colorText: Colors.white
+        colorText: Colors.white,
       );
     } finally {
       // Giriş denemesi bitti (başarılı veya başarısız), yükleme çarkını durdur

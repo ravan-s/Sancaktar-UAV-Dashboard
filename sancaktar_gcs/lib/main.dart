@@ -24,6 +24,7 @@ void main() async {
 
   if (isLinuxDesktop) {
     Get.put(UavController(), permanent: true);
+    Get.put(AuthController(), permanent: true); // ← bunu ekle
   } else {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -103,7 +104,7 @@ class CommandCockpit extends StatelessWidget {
               children: [
                 _header(ctrl),
                 const SizedBox(height: 20),
-                _map(ctrl),
+                _map(context, ctrl),
                 const SizedBox(height: 20),
                 _telemetry(ctrl),
                 const SizedBox(height: 30),
@@ -143,7 +144,7 @@ class CommandCockpit extends StatelessWidget {
     ),
   );
 
-  Widget _map(UavController ctrl) => Obx(() {
+  Widget _map(BuildContext context, UavController ctrl) => Obx(() {
     final markers = ctrl.uavList.entries.map((e) {
       final sel = ctrl.selectedUavId.value == e.key;
       return Marker(
@@ -196,13 +197,36 @@ class CommandCockpit extends StatelessWidget {
               ctrl.currentUav?.lon ?? 32.5115,
             ),
             initialZoom: 15,
+            // ✅ Uzun basma buraya eklendi
+            onLongPress: (TapPosition tapPosition, LatLng latLng) {
+              ctrl.addSelectedMarker(latLng);
+              _onMapLongPress(context, ctrl, latLng);
+            },
           ),
           children: [
             TileLayer(
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.sancaktar.gcs',
             ),
-            MarkerLayer(markers: markers),
+            // ✅ Seçilen konum marker'ı eklendi
+            Obx(
+              () => MarkerLayer(
+                markers: [
+                  ...markers, // mevcut marker'larınız
+                  if (ctrl.selectedLocation.value != null)
+                    Marker(
+                      point: ctrl.selectedLocation.value!,
+                      width: 40,
+                      height: 40,
+                      child: const Icon(
+                        Icons.location_pin,
+                        color: Colors.blue,
+                        size: 40,
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -330,12 +354,56 @@ class CommandCockpit extends StatelessWidget {
       const SizedBox(height: 15),
       Obx(
         () => ctrl.selectedUavId.value == 'alan_tarama'
-            ? _btn(
-                'ALAN TARAMA TİPİ',
-                Colors.purple,
-                () => _showScanTypeDialog(context, ctrl),
+            ? SizedBox(
+                width: double.infinity,
+                child: _btn(
+                  'ALAN TARAMA TİPİ',
+                  Colors.purple,
+                  () => _showScanTypeDialog(context, ctrl),
+                ),
               )
             : const SizedBox.shrink(),
+      ),
+      const SizedBox(height: 15),
+      Obx(
+        () => SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(
+                color: ctrl.isListening.value
+                    ? Colors.redAccent.withOpacity(0.8)
+                    : Colors.tealAccent.withOpacity(0.5),
+                width: 1.5,
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              backgroundColor: ctrl.isListening.value
+                  ? Colors.redAccent.withOpacity(0.08)
+                  : Colors.tealAccent.withOpacity(0.05),
+            ),
+            onPressed: () => ctrl.toggleListening(),
+            icon: Icon(
+              ctrl.isListening.value ? Icons.mic : Icons.mic_none,
+              color: ctrl.isListening.value
+                  ? Colors.redAccent
+                  : Colors.tealAccent,
+              size: 20,
+            ),
+            label: Text(
+              ctrl.isListening.value ? 'DİNLENİYOR...' : 'SESLİ KOMUT',
+              style: TextStyle(
+                color: ctrl.isListening.value
+                    ? Colors.redAccent
+                    : Colors.tealAccent,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+        ),
       ),
     ],
   );
@@ -516,6 +584,71 @@ class CommandCockpit extends StatelessWidget {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('İPTAL', style: TextStyle(color: Colors.white38)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _onMapLongPress(
+    BuildContext context,
+    UavController ctrl,
+    LatLng latLng,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0D1621),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.blue, width: 1),
+        ),
+        title: const Text(
+          'KONUM SEÇİLDİ',
+          style: TextStyle(
+            color: Colors.blue,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 2,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '📍 Enlem: ${latLng.latitude.toStringAsFixed(6)}',
+              style: const TextStyle(color: Colors.blueGrey),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '📍 Boylam: ${latLng.longitude.toStringAsFixed(6)}',
+              style: const TextStyle(color: Colors.blueGrey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('İPTAL', style: TextStyle(color: Colors.white38)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              ctrl.sendManualLocation(latLng.latitude, latLng.longitude);
+            },
+            child: const Text(
+              'KONUMU GÖNDER',
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),

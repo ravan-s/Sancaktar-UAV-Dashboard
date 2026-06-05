@@ -4,8 +4,10 @@
 //   Pixhawk → DroneKit (Raspberry Pi) → WiFi → Firebase
 //   Firebase → [bu controller] → UI
 
+import 'package:firebase_database/firebase_database.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -39,7 +41,7 @@ class UavController extends GetxController {
   UavModel? get currentUav =>
       selectedUavId.value.isEmpty ? null : uavList[selectedUavId.value];
 
-  int get _accessLevel => _auth?.userAccessLevel.value ?? 0;
+  int get _accessLevel => _auth?.userAccessLevel.value ?? 10;
 
   @override
   void onInit() {
@@ -53,6 +55,42 @@ class UavController extends GetxController {
     ever(uavList, (Map<String, UavModel> list) {
       list.forEach((id, uav) => _runFailSafeChecks(id, uav));
     });
+  }
+
+  // UavController içinde
+  final Rx<LatLng?> selectedLocation = Rx<LatLng?>(null);
+
+  void addSelectedMarker(LatLng latLng) {
+    selectedLocation.value = latLng;
+  }
+
+  Future<void> sendManualLocation(double lat, double lng) async {
+    try {
+      await FirebaseDatabase.instance
+          .ref('uavs/${selectedUavId.value}/command')
+          .set({
+            'type': 'MANUAL_LOCATION',
+            'latitude': lat,
+            'longitude': lng,
+            'timestamp': ServerValue.timestamp,
+          });
+
+      Get.snackbar(
+        'Başarılı',
+        'Konum gönderildi',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green.withOpacity(0.8),
+        colorText: Colors.white,
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Hata',
+        'Konum gönderilemedi: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.withOpacity(0.8),
+        colorText: Colors.white,
+      );
+    }
   }
 
   // ── FAİLSAFE ─────────────────────────────────────────────────
@@ -96,6 +134,9 @@ class UavController extends GetxController {
   // ── KOMUT GÖNDER ─────────────────────────────────────────────
   // Firebase'e yazar → Raspberry Pi dinler → DroneKit'e iletir
   void sendCommand(String commandType, {Map<String, dynamic>? extra}) {
+    debugPrint('🚁 _accessLevel: $_accessLevel');
+    debugPrint('🚁 _auth: $_auth');
+    debugPrint('🚁 userAccessLevel: ${_auth?.userAccessLevel.value}');
     FirestoreLogService().logCommand(
       droneId: selectedUavId.value,
       action: commandType,
