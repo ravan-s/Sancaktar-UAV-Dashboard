@@ -1,21 +1,103 @@
 {
-  "drones": {
-    "uavs": {
-      "tuna_1": {
-        "telemetry": {
-          "altitude": 1250.5,
-          "battery": 92,
-          "speed": 85.0
-        },
-        "status": {
-          "connection_strength": 98,
-          "flight_mode": "LOITER",
-          "is_armed": true
-        },
-        "command": {
-          "action": "NONE",
-          "is_executed": true
-        }
+  "uavs": {
+    "alan_tarama": {
+      "telemetry": {
+        "altitude": 45.5,
+        "battery": 87,
+        "battery_volt": 14.8,
+        "speed": 6.2,
+        "lat": 38.0285,
+        "lon": 32.5115,
+        "gps_fix": 3
+      },
+      "status": {
+        "flight_mode": "AUTO",
+        "is_armed": true,
+        "connection_strength": 95
+      },
+      "command": {
+        "action": "BEKLEME",
+        "is_executed": false
+      }
+    },
+    "kamikaze": {
+      "telemetry": {
+        "altitude": 0.0,
+        "battery": 62,
+        "battery_volt": 14.2,
+        "speed": 0.0,
+        "lat": 38.0301,
+        "lon": 32.5098,
+        "gps_fix": 3
+      },
+      "status": {
+        "flight_mode": "STABILIZE",
+        "is_armed": false,
+        "connection_strength": 88
+      },
+      "command": {
+        "action": "BEKLEME",
+        "is_executed": false
+      }
+    },
+    "tasiyici": {
+      "telemetry": {
+        "altitude": 120.0,
+        "battery": 24,
+        "battery_volt": 13.1,
+        "speed": 8.5,
+        "lat": 38.0312,
+        "lon": 32.5140,
+        "gps_fix": 3
+      },
+      "status": {
+        "flight_mode": "AUTO",
+        "is_armed": true,
+        "connection_strength": 72
+      },
+      "command": {
+        "action": "DELIVER_CARGO",
+        "is_executed": false
+      }
+    },
+    "insan_takip": {
+      "telemetry": {
+        "altitude": 30.0,
+        "battery": 91,
+        "battery_volt": 15.1,
+        "speed": 4.0,
+        "lat": 38.0270,
+        "lon": 32.5130,
+        "gps_fix": 3
+      },
+      "status": {
+        "flight_mode": "GUIDED",
+        "is_armed": true,
+        "connection_strength": 99
+      },
+      "command": {
+        "action": "TRACK_TARGET",
+        "is_executed": false
+      }
+    },
+    "tuna_1": {
+      "telemetry": {
+        "altitude": 0.0,
+        "battery": 100,
+        "battery_volt": 16.8,
+        "speed": 0.0,
+        "lat": 38.0295,
+        "lon": 32.5105,
+        "gps_fix": 2
+      },
+      "status": {
+        "flight_mode": "STABILIZE",
+        "is_armed": false,
+        "connection_strength": 100
+      },
+      "command": {
+        "action": "BEKLEME",
+        "is_executed": false
       }
     }
   }
