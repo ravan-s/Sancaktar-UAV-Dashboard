@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart'; // Import metodun içinde değil, burada olmalı!
+import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:sancaktar_gcs/controllers/auth_controller.dart';
 
 class LoadingScreen extends StatefulWidget {
   @override
@@ -16,7 +17,6 @@ class _LoadingScreenState extends State<LoadingScreen>
   @override
   void initState() {
     super.initState();
-    // 1. Kontrolcüleri tanımla
     _splitController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
@@ -26,23 +26,26 @@ class _LoadingScreenState extends State<LoadingScreen>
       duration: const Duration(seconds: 2),
     )..repeat();
 
-    // 2. Senaryoyu başlat
     Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        setState(() => isSplitting = true);
-        _splitController.forward(); // Kapıları açar
-      }
+      if (!mounted) return;
+      setState(() => isSplitting = true);
+      _splitController.forward();
 
-      // Kapılar açılmaya başladıktan 1 saniye sonra Login ekranına geç
       Future.delayed(const Duration(seconds: 1), () async {
-        if (mounted) {
-          // Firebase auth durumunu bekle
-          final user = await FirebaseAuth.instance.authStateChanges().first;
-          user != null ? Get.offNamed('/fleet') : Get.offNamed('/login');
+        if (!mounted) return;
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          final auth = Get.find<AuthController>();
+          auth.loadUserFromSession(
+            user.uid,
+          ); // ← await KALDIRILDI, beklemeden git
+          Get.offAllNamed('/fleet');
+        } else {
+          Get.offAllNamed('/login');
         }
       });
-    }); // Future.delayed (3 sn) kapanış parantezi
-  } // initState kapanış parantezi
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +55,6 @@ class _LoadingScreenState extends State<LoadingScreen>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. Izgara Arka Planı
           Opacity(
             opacity: 0.1,
             child: GridPaper(
@@ -62,8 +64,6 @@ class _LoadingScreenState extends State<LoadingScreen>
               subdivisions: 1,
             ),
           ),
-
-          // 2. SOL PANEL (Mavi Gradyan)
           AnimatedBuilder(
             animation: _splitController,
             builder: (context, child) => Positioned(
@@ -80,8 +80,6 @@ class _LoadingScreenState extends State<LoadingScreen>
               ),
             ),
           ),
-
-          // 3. SAĞ PANEL (Mavi Gradyan)
           AnimatedBuilder(
             animation: _splitController,
             builder: (context, child) => Positioned(
@@ -98,8 +96,6 @@ class _LoadingScreenState extends State<LoadingScreen>
               ),
             ),
           ),
-
-          // 4. ORTA İÇERİK
           Center(
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 500),

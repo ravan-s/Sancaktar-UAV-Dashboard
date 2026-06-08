@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:sancaktar_gcs/views/screens/register_screen.dart';
 import 'firebase_options.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -23,8 +24,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (isLinuxDesktop) {
-    Get.put(UavController(), permanent: true);
-    Get.put(AuthController(), permanent: true); // ← bunu ekle
+    Get.put(UavController(), permanent: true); // AuthController YOK
   } else {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -32,7 +32,6 @@ void main() async {
     Get.put(AuthController(), permanent: true);
     Get.put(UavController(), permanent: true);
   }
-
   runApp(const SancaktarGCS());
 }
 
@@ -52,12 +51,33 @@ class SancaktarGCS extends StatelessWidget {
           : StreamBuilder<User?>(
               stream: FirebaseAuth.instance.authStateChanges(),
               builder: (context, snapshot) {
+                // Firebase bağlantısı bekleniyor
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return LoadingScreen();
                 }
-                return snapshot.hasData
-                    ? const FleetSelectionScreen()
-                    : const LoginScreen();
+
+                // Oturum yok → login
+                if (!snapshot.hasData) return const LoginScreen();
+
+                // Oturum VAR ama AuthController henüz dolmamış olabilir
+                final auth = Get.find<AuthController>();
+                final uid = snapshot.data!.uid;
+
+                // Sadece bir kez çalıştır
+                if (auth.currentUid.value.isEmpty) {
+                  auth.loadUserFromSession(uid);
+                }
+
+                // sessionReady gelene kadar LoadingScreen göster
+                return Obx(() {
+                  // sessionReady false iken zaten Loading göster
+                  if (!auth.sessionReady.value) return LoadingScreen();
+
+                  // sessionReady true oldu ama 6sn geçti mi?
+                  if (!auth.minSplashDone.value) return LoadingScreen();
+
+                  return const FleetSelectionScreen();
+                });
               },
             ),
       getPages: [
@@ -65,6 +85,7 @@ class SancaktarGCS extends StatelessWidget {
         GetPage(name: '/fleet', page: () => const FleetSelectionScreen()),
         GetPage(name: '/cockpit', page: () => const CommandCockpit()),
         GetPage(name: '/desktop', page: () => const DesktopCockpit()),
+        GetPage(name: '/register', page: () => const RegisterScreen()),
       ],
     );
   }

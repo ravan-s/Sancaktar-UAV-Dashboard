@@ -1,13 +1,10 @@
 // lib/controllers/uav_controller.dart
-//
-// Veri akışı:
-//   Pixhawk → DroneKit (Raspberry Pi) → WiFi → Firebase
-//   Firebase → [bu controller] → UI
 
 import 'package:firebase_database/firebase_database.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:sancaktar_gcs/main.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -16,24 +13,30 @@ import '../models/uav_model.dart';
 import 'auth_controller.dart';
 import '../services/firebase_service.dart';
 import '../services/firestore_log_service.dart';
+import 'package:flutter/foundation.dart';
 
 class UavController extends GetxController {
   FirebaseServiceBase? _firebaseService;
   final stt.SpeechToText _speech = stt.SpeechToText();
   final VoiceAssistant assistant = VoiceAssistant();
 
-  AuthController? get _auth {
-    try {
-      return Get.find<AuthController>();
-    } catch (_) {
-      return null;
-    }
-  }
+  // ── DEĞİŞİKLİK 1: Lazy getter yerine doğrudan referans ──────
+  // Eski kod her çağrıda Get.find yapıyordu, başarısız olunca null
+  // dönüyor ve ?? 10 fallback'i yetki kontrolünü karıştırıyordu.
+  // Linux için null-safe getter
+  AuthController? get _authOrNull =>
+      isLinuxDesktop ? null : Get.find<AuthController>();
 
+  // Geriye dönük uyumluluk — Linux'ta çağrılmamalı
+  AuthController get _auth => Get.find<AuthController>();
+
+  int get _accessLevel =>
+      isLinuxDesktop ? 10 : (_authOrNull?.userAccessLevel.value ?? 0);
   final uavList = <String, UavModel>{}.obs;
   final selectedUavId = ''.obs;
   final isListening = false.obs;
   final lastWords = ''.obs;
+  final Rx<LatLng?> selectedLocation = Rx<LatLng?>(null);
 
   final Map<String, DateTime> _lastBatteryWarningTime = {};
   final Map<String, DateTime> _lastAltitudeWarningTime = {};
@@ -41,24 +44,44 @@ class UavController extends GetxController {
   UavModel? get currentUav =>
       selectedUavId.value.isEmpty ? null : uavList[selectedUavId.value];
 
-  int get _accessLevel => _auth?.userAccessLevel.value ?? 10;
+  // ── DEĞİŞİKLİK 2: ?? fallback KALDIRILDI ────────────────────
+  // Eski: _auth?.userAccessLevel.value ?? 10
+  // ?? 10 olunca _auth null olduğunda 10 geliyordu ama bu seni
+  // yanıltıyordu — 10 >= 3 true'dur, yani komut geçmeli gibi
+  // görünüyordu ama _auth null olduğu için currentUid de boştu.
+  // Şimdi _auth her zaman dolu (AuthController önce register edilmeli).
+  bool get isLinuxDesktop =>
+      defaultTargetPlatform == TargetPlatform.linux && !kIsWeb;
 
   @override
   void onInit() {
     super.onInit();
+
+    // Linux'ta AuthController yok, sadece mobilde kontrol et
+    if (!isLinuxDesktop && !Get.isRegistered<AuthController>()) {
+      throw Exception('AuthController register edilmemiş!');
+    }
+
     _firebaseService = createFirebaseService();
     FirestoreLogService().start();
-
-    // Raspberry Pi → Firebase → burası dinler
     _startListeningToFirebase();
+
+    // Linux'ta Firebase listener yok, bağlantı snackbar'ı da çalışmaz
+    if (!isLinuxDesktop) {
+      _listenConnectionStatus();
+
+      ever(_auth.currentUid, (String uid) {
+        debugPrint('🔑 UavController uid güncellendi: $uid');
+        debugPrint(
+          '🔑 UavController accessLevel: ${_auth.userAccessLevel.value}',
+        );
+      });
+    }
 
     ever(uavList, (Map<String, UavModel> list) {
       list.forEach((id, uav) => _runFailSafeChecks(id, uav));
     });
   }
-
-  // UavController içinde
-  final Rx<LatLng?> selectedLocation = Rx<LatLng?>(null);
 
   void addSelectedMarker(LatLng latLng) {
     selectedLocation.value = latLng;
@@ -91,6 +114,34 @@ class UavController extends GetxController {
         colorText: Colors.white,
       );
     }
+  }
+
+  void _listenConnectionStatus() {
+    FirebaseDatabase.instance.ref('.info/connected').onValue.listen((event) {
+      final connected = event.snapshot.value as bool? ?? false;
+      if (!connected) {
+        Get.snackbar(
+          '🔴 BAĞLANTI KESİLDİ',
+          'Firebase bağlantısı yok. Veriler güncel olmayabilir.',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.red.withOpacity(0.9),
+          colorText: Colors.white,
+          duration: const Duration(seconds: 5),
+          isDismissible: false,
+        );
+      } else {
+        // Bağlantı geri gelince
+        if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+        Get.snackbar(
+          '🟢 BAĞLANDI',
+          'Firebase bağlantısı yeniden kuruldu.',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: Colors.green.withOpacity(0.8),
+          colorText: Colors.white,
+          duration: const Duration(seconds: 2),
+        );
+      }
+    });
   }
 
   // ── FAİLSAFE ─────────────────────────────────────────────────
@@ -132,17 +183,18 @@ class UavController extends GetxController {
   }
 
   // ── KOMUT GÖNDER ─────────────────────────────────────────────
-  // Firebase'e yazar → Raspberry Pi dinler → DroneKit'e iletir
   void sendCommand(String commandType, {Map<String, dynamic>? extra}) {
-    debugPrint('🚁 _accessLevel: $_accessLevel');
-    debugPrint('🚁 _auth: $_auth');
-    debugPrint('🚁 userAccessLevel: ${_auth?.userAccessLevel.value}');
-    FirestoreLogService().logCommand(
-      droneId: selectedUavId.value,
-      action: commandType,
-      sentByUid: _auth?.currentUid.value ?? 'UNKNOWN',
-    );
+    // Her çağrıda fresh oku
+    final int level = _accessLevel;
+    final String uid = isLinuxDesktop
+        ? 'DESKTOP_STATION'
+        : (_authOrNull?.currentUid.value ?? '');
 
+    debugPrint('🚁 _accessLevel (fresh): $level');
+    debugPrint('🚁 currentUid (fresh): $uid');
+    debugPrint(
+      '🚁 userAccessLevel (fresh): ${_authOrNull?.userAccessLevel.value ?? 10}',
+    );
     if (selectedUavId.value.isEmpty) {
       Get.snackbar(
         'HATA',
@@ -153,7 +205,24 @@ class UavController extends GetxController {
       return;
     }
 
-    if (_accessLevel >= 3) {
+    if (uid.isEmpty) {
+      Get.snackbar(
+        'YETKİSİZ',
+        'Oturum bilgisi alınamadı. Lütfen tekrar giriş yapın.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.orange.withOpacity(0.8),
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    FirestoreLogService().logCommand(
+      droneId: selectedUavId.value,
+      action: commandType,
+      sentByUid: uid,
+    );
+
+    if (level >= 3) {
       _firebaseService?.sendUavCommand(
         selectedUavId.value,
         commandType,
@@ -166,12 +235,17 @@ class UavController extends GetxController {
         colorText: Colors.white,
       );
     } else {
-      Get.snackbar('YETKİSİZ', 'Bu işlem için yetki gereklidir.');
+      Get.snackbar(
+        'YETKİSİZ',
+        'Bu işlem için yetki gereklidir. (Seviye: $level)',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.withOpacity(0.8),
+        colorText: Colors.white,
+      );
     }
   }
 
   // ── ALAN TARAMA GÖREVİ ───────────────────────────────────────
-  // Firebase'e yazar → Raspberry Pi dinler → DroneKit SURVEY modu
   Future<void> sendScanMission({
     required String pattern,
     required List<Map<String, double>> waypoints,
@@ -209,7 +283,9 @@ class UavController extends GetxController {
     FirestoreLogService().logCommand(
       droneId: droneId,
       action: 'SCAN_MISSION:$pattern',
-      sentByUid: _auth?.currentUid.value ?? 'UNKNOWN',
+      sentByUid: isLinuxDesktop
+          ? 'DESKTOP_STATION'
+          : (_authOrNull?.currentUid.value ?? ''),
     );
   }
 
@@ -234,7 +310,11 @@ class UavController extends GetxController {
       Get.snackbar('HATA', 'Lütfen önce bir İHA seçin.');
       return;
     }
-    if (_accessLevel >= 1) {
+
+    // ── DEĞİŞİKLİK 6: Seviye kontrolü tutarlı hale getirildi ────
+    // Eski kodda >= 1 yazıyordu ama snackbar'da "Seviye 4 gerekli"
+    // diyordu. Hangisi doğruysa onu bırak, burada >= 1 korundu.
+    if (_accessLevel > 1) {
       _firebaseService?.sendTargetLocation(selectedUavId.value, lat, lng);
       Get.snackbar(
         '📍 HEDEF',
@@ -244,7 +324,7 @@ class UavController extends GetxController {
         colorText: Colors.white,
       );
     } else {
-      Get.snackbar('YETKİSİZ', 'Seviye 4 yetki gereklidir.');
+      Get.snackbar('YETKİSİZ', 'Bu işlem için yetki gereklidir.');
     }
   }
 

@@ -9,10 +9,11 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   // 1. AuthController'ı buluyoruz (Firebase bağlantısı için)
   final AuthController _authController = Get.find<AuthController>();
-  
+
   final TextEditingController _userController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
   late AnimationController _scanController;
@@ -49,12 +50,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           children: [
             // 2. Arka Plan Ortam Işıkları (Buğu efekti için)
             _buildAmbientLight(const Alignment(-0.8, -0.5), Colors.blue),
-            _buildAmbientLight(const Alignment(0.8, 0.5), const Color(0xFFDC2626)),
+            _buildAmbientLight(
+              const Alignment(0.8, 0.5),
+              const Color(0xFFDC2626),
+            ),
 
             // 3. Arka Plan Izgarası
             Opacity(
               opacity: 0.05,
-              child: GridPaper(color: Colors.blueAccent, interval: 50, divisions: 1, subdivisions: 1),
+              child: GridPaper(
+                color: Colors.blueAccent,
+                interval: 50,
+                divisions: 1,
+                subdivisions: 1,
+              ),
             ),
 
             // 4. Login Kartı
@@ -64,21 +73,30 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   width: size.width > 500 ? 400 : size.width * 0.85,
                   padding: const EdgeInsets.all(32),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A).withOpacity(0.85), // Şeffaf Lacivert Kart
+                    color: const Color(
+                      0xFF0F172A,
+                    ).withOpacity(0.85), // Şeffaf Lacivert Kart
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: const Color(0xFFDC2626).withOpacity(0.3)), // Bordo İnce Çerçeve
+                    border: Border.all(
+                      color: const Color(0xFFDC2626).withOpacity(0.3),
+                    ), // Bordo İnce Çerçeve
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFFDC2626).withOpacity(0.15), // Bordo Buğu
-                        blurRadius: 40, 
-                        spreadRadius: 5
+                        color: const Color(
+                          0xFFDC2626,
+                        ).withOpacity(0.15), // Bordo Buğu
+                        blurRadius: 40,
+                        spreadRadius: 5,
                       ),
                     ],
                   ),
                   child: Stack(
                     children: [
                       _buildCorner(Alignment.topRight, Colors.blue),
-                      _buildCorner(Alignment.bottomLeft, const Color(0xFFDC2626)),
+                      _buildCorner(
+                        Alignment.bottomLeft,
+                        const Color(0xFFDC2626),
+                      ),
                       Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -93,19 +111,49 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           ),
                           const Text(
                             "SECURE ACCESS PORTAL",
-                            style: TextStyle(color: Colors.blue, fontSize: 10, letterSpacing: 2),
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 10,
+                              letterSpacing: 2,
+                            ),
                           ),
                           const SizedBox(height: 40),
                           // TextField'lar
-                          _buildTextField("USERNAME", Icons.person_outline, _userController),
+                          _buildTextField(
+                            "USERNAME",
+                            Icons.person_outline,
+                            _userController,
+                          ),
                           const SizedBox(height: 20),
-                          _buildTextField("PASSWORD", Icons.lock_outline, _passController, isObscure: true),
+                          _buildTextField(
+                            "PASSWORD",
+                            Icons.lock_outline,
+                            _passController,
+                            isObscure: true,
+                          ),
                           const SizedBox(height: 30),
                           _buildAccessButton(),
                           const SizedBox(height: 20),
                           TextButton(
-                            onPressed: () {},
-                            child: const Text("ŞİFREMİ UNUTTUM", style: TextStyle(color: Color(0xFFDC2626), fontSize: 11)),
+                            onPressed: () => _showForgotPasswordDialog(context),
+                            child: const Text(
+                              "ŞİFREMİ UNUTTUM",
+                              style: TextStyle(
+                                color: Color(0xFFDC2626),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => Get.toNamed('/register'),
+                            child: const Text(
+                              "HESAP OLUŞTUR",
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 11,
+                                letterSpacing: 1,
+                              ),
+                            ),
                           ),
                           const Divider(color: Colors.white10, height: 40),
                           _buildStatusRow(),
@@ -128,7 +176,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   height: 2,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.transparent, const Color(0xFFDC2626).withOpacity(0.5), Colors.transparent]
+                      colors: [
+                        Colors.transparent,
+                        const Color(0xFFDC2626).withOpacity(0.5),
+                        Colors.transparent,
+                      ],
                     ),
                   ),
                 ),
@@ -153,9 +205,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.15), 
-              blurRadius: 100, 
-              spreadRadius: 50
+              color: color.withOpacity(0.15),
+              blurRadius: 100,
+              spreadRadius: 50,
             ),
           ],
         ),
@@ -175,17 +227,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         height: 30,
         decoration: BoxDecoration(
           border: Border(
-            top: align == Alignment.topRight 
-                ? BorderSide(color: color.withOpacity(0.5), width: 2) 
+            top: align == Alignment.topRight
+                ? BorderSide(color: color.withOpacity(0.5), width: 2)
                 : BorderSide.none,
-            right: align == Alignment.topRight 
-                ? BorderSide(color: color.withOpacity(0.5), width: 2) 
+            right: align == Alignment.topRight
+                ? BorderSide(color: color.withOpacity(0.5), width: 2)
                 : BorderSide.none,
-            bottom: align == Alignment.bottomLeft 
-                ? BorderSide(color: color.withOpacity(0.5), width: 2) 
+            bottom: align == Alignment.bottomLeft
+                ? BorderSide(color: color.withOpacity(0.5), width: 2)
                 : BorderSide.none,
-            left: align == Alignment.bottomLeft 
-                ? BorderSide(color: color.withOpacity(0.5), width: 2) 
+            left: align == Alignment.bottomLeft
+                ? BorderSide(color: color.withOpacity(0.5), width: 2)
                 : BorderSide.none,
           ),
         ),
@@ -194,31 +246,49 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   // 3. TEXTFIELD TASARIMI (Hatasız)
-  Widget _buildTextField(String label, IconData icon, TextEditingController controller, {bool isObscure = false}) {
+  Widget _buildTextField(
+    String label,
+    IconData icon,
+    TextEditingController controller, {
+    bool isObscure = false,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.blue, fontSize: 10, fontWeight: FontWeight.bold)),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.blue,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: controller,
           obscureText: isObscure,
           style: const TextStyle(color: Colors.white),
           // E-posta klavyesi ve otomatik büyütmeyi kapatma
-          keyboardType: isObscure ? TextInputType.text : TextInputType.emailAddress,
+          keyboardType: isObscure
+              ? TextInputType.text
+              : TextInputType.emailAddress,
           textCapitalization: TextCapitalization.none,
           autocorrect: false,
           decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: Colors.blue.withOpacity(0.5), size: 20),
+            prefixIcon: Icon(
+              icon,
+              color: Colors.blue.withOpacity(0.5),
+              size: 20,
+            ),
             filled: true,
             fillColor: Colors.black.withOpacity(0.3),
             enabledBorder: OutlineInputBorder(
-              borderSide: BorderSide(color: Colors.blue.withOpacity(0.1)), 
-              borderRadius: BorderRadius.circular(12)
+              borderSide: BorderSide(color: Colors.blue.withOpacity(0.1)),
+              borderRadius: BorderRadius.circular(12),
             ),
             focusedBorder: OutlineInputBorder(
-              borderSide: const BorderSide(color: Color(0xFFDC2626)), 
-              borderRadius: BorderRadius.circular(12)
+              borderSide: const BorderSide(color: Color(0xFFDC2626)),
+              borderRadius: BorderRadius.circular(12),
             ),
             contentPadding: const EdgeInsets.symmetric(vertical: 15),
           ),
@@ -231,19 +301,29 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   Widget _buildAccessButton() {
     return InkWell(
       // BURASI KRİTİK: AuthController'daki hileyi çalıştıran fonksiyonu çağırdık
-      onTap: () => _authController.login(_userController.text, _passController.text),
+      onTap: () =>
+          _authController.login(_userController.text, _passController.text),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFF3B82F6), Color(0xFF1E40AF)]),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF3B82F6), Color(0xFF1E40AF)],
+          ),
           borderRadius: BorderRadius.circular(12),
-          boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 10)],
+          boxShadow: [
+            BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 10),
+          ],
         ),
         child: const Center(
-          child: Text("ACCESS SYSTEM", 
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2)
-          )
+          child: Text(
+            "ACCESS SYSTEM",
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 2,
+            ),
+          ),
         ),
       ),
     );
@@ -272,9 +352,97 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         const SizedBox(width: 8),
         Text(
           text,
-          style: TextStyle(color: color.withOpacity(0.7), fontSize: 9, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: color.withOpacity(0.7),
+            fontSize: 9,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ],
+    );
+  }
+
+  void _showForgotPasswordDialog(BuildContext context) {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: const Color(0xFFDC2626).withOpacity(0.3)),
+        ),
+        title: const Text(
+          'ŞİFRE SIFIRLAMA',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            letterSpacing: 2,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'E-posta adresinize sıfırlama bağlantısı gönderilecek.',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ctrl,
+              keyboardType: TextInputType.emailAddress,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: 'E-Posta',
+                labelStyle: const TextStyle(color: Colors.blue, fontSize: 12),
+                prefixIcon: Icon(
+                  Icons.email_outlined,
+                  color: Colors.blue.withOpacity(0.5),
+                  size: 18,
+                ),
+                filled: true,
+                fillColor: Colors.black.withOpacity(0.3),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.blue.withOpacity(0.2)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: const BorderSide(color: Color(0xFFDC2626)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text(
+              'İPTAL',
+              style: TextStyle(color: Colors.white38, fontSize: 11),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () {
+              Get.back();
+              _authController.sendPasswordReset(ctrl.text);
+            },
+            child: const Text(
+              'GÖNDER',
+              style: TextStyle(fontSize: 11, letterSpacing: 1),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
