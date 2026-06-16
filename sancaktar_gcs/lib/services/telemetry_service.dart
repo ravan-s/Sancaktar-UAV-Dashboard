@@ -48,7 +48,7 @@ class FirebaseServiceRest extends FirebaseServiceBase {
   void _startPollLoop(StreamController<Map<String, UavModel>> sc) async {
     while (!sc.isClosed) {
       try {
-        final uri = Uri.parse('$_baseUrl/uavs/uavs.json');
+        final uri = Uri.parse('$_baseUrl/uavs.json');
         final response = await http.get(uri);
 
         if (response.statusCode == 200) {
@@ -92,7 +92,7 @@ class FirebaseServiceRest extends FirebaseServiceBase {
     String commandType, {
     Map<String, dynamic>? extra,
   }) async {
-    final uri = Uri.parse('$_baseUrl/uavs/uavs/$droneId/command.json');
+    final uri = Uri.parse('$_baseUrl/uavs/$droneId/command.json');
     try {
       await http.patch(
         uri,
@@ -131,7 +131,7 @@ class FirebaseServiceRest extends FirebaseServiceBase {
     required double altitude,
     required double speed,
   }) async {
-    final uri = Uri.parse('$_baseUrl/uavs/uavs/$droneId/mission/scan.json');
+    final uri = Uri.parse('$_baseUrl/uavs/$droneId/mission/scan.json');
     try {
       await http.put(
         uri,
@@ -157,7 +157,7 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
 
   @override
   Stream<Map<String, UavModel>> listenToUavs() {
-    return _db.ref('uavs/uavs').onValue.map((event) {
+    return _db.ref('uavs').onValue.map((event) {
       final result = <String, UavModel>{};
       final data = event.snapshot.value as Map<dynamic, dynamic>?;
       if (data == null) return result;
@@ -191,7 +191,7 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
     String commandType, {
     Map<String, dynamic>? extra,
   }) async {
-    await _db.ref('uavs/uavs/$droneId/command').set({
+    await _db.ref('uavs/$droneId/command').set({
       'action': commandType,
       'timestamp': ServerValue.timestamp,
       ...?extra,
@@ -220,7 +220,7 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
     required double altitude,
     required double speed,
   }) async {
-    await _db.ref('uavs/uavs/$droneId/mission/scan').set({
+    await _db.ref('uavs/$droneId/mission/scan').set({
       'pattern': pattern,
       'waypoints': waypoints,
       'altitude': altitude,

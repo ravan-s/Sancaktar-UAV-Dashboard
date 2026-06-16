@@ -16,7 +16,7 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
     required Map<String, dynamic> data,
   }) async {
     try {
-      await FirebaseDatabase.instance.ref('uavs/uavs/$droneCode').update({
+      await FirebaseDatabase.instance.ref('uavs/$droneCode').update({
         ...data,
         'last_update': ServerValue.timestamp,
       });
@@ -28,7 +28,7 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
   // ── 2. DRONE DİNLE (WebSocket) ───────────────────
   @override
   Stream<Map<String, UavModel>> listenToUavs() {
-    return FirebaseDatabase.instance.ref('uavs/uavs').onValue.map((event) {
+    return FirebaseDatabase.instance.ref('uavs').onValue.map((event) {
       final result = <String, UavModel>{};
       final raw = event.snapshot.value as Map?;
       if (raw == null) return result;
@@ -64,9 +64,7 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
       ...extraParams,
     };
 
-    await FirebaseDatabase.instance
-        .ref('uavs/uavs/$uavId/command')
-        .update(payload);
+    await FirebaseDatabase.instance.ref('uavs/$uavId/command').update(payload);
 
     await FirebaseDatabase.instance.ref('flight_logs/$uavId').push().set({
       'message': '$commandType komutu gönderildi.',
@@ -121,7 +119,7 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
   }) async {
     _checkAuth();
 
-    await FirebaseDatabase.instance.ref('uavs/uavs/$droneId/mission/scan').set({
+    await FirebaseDatabase.instance.ref('uavs/$droneId/mission/scan').set({
       'pattern': pattern,
       'waypoints': waypoints,
       'altitude': altitude,

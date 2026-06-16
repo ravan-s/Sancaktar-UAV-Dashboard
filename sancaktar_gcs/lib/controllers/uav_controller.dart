@@ -41,6 +41,12 @@ class UavController extends GetxController {
   final Map<String, DateTime> _lastBatteryWarningTime = {};
   final Map<String, DateTime> _lastAltitudeWarningTime = {};
 
+  // ── DURUM TAKİP ──────────────────────────────────────────────
+  final Map<String, bool> _prevArmedState = {};
+  bool _allLaunchedAnnounced = false;
+  bool _humanDetectedAnnounced = false;
+  bool _alanTaramaArrivedAnnounced = false;
+
   UavModel? get currentUav =>
       selectedUavId.value.isEmpty ? null : uavList[selectedUavId.value];
 
@@ -79,8 +85,18 @@ class UavController extends GetxController {
     }
 
     ever(uavList, (Map<String, UavModel> list) {
-      list.forEach((id, uav) => _runFailSafeChecks(id, uav));
+      list.forEach((id, uav) {
+        _runFailSafeChecks(id, uav);
+        _checkLaunchStatus(id, uav);
+        _checkMissionEvents(id, uav);
+      });
+      _checkAllLaunched(list);
     });
+
+    // Tespit olayları — sadece mobilde
+    if (!isLinuxDesktop) {
+      _listenDetectionEvents();
+    }
   }
 
   void addSelectedMarker(LatLng latLng) {
@@ -165,13 +181,86 @@ class UavController extends GetxController {
     }
   }
 
+  // ── KALDIŞ MUTABAKATI ────────────────────────────────────────
+  void _checkLaunchStatus(String id, UavModel uav) {
+    final prev = _prevArmedState[id];
+    if (prev == false && uav.isArmed == true) {
+      assistant.say('${_droneDisplayName(id)} kalkış yaptı.');
+    }
+    _prevArmedState[id] = uav.isArmed;
+  }
+
+  void _checkAllLaunched(Map<String, UavModel> list) {
+    if (_allLaunchedAnnounced || list.isEmpty) return;
+    if (list.values.every((uav) => uav.isArmed)) {
+      _allLaunchedAnnounced = true;
+      assistant.say(
+        'Tüm dronlar görevlerini yapmak üzere kalkış yaptılar. Eve dönülüyor.',
+      );
+    }
+  }
+
+  // ── GÖREV OLAYLARI ───────────────────────────────────────────
+  void _checkMissionEvents(String id, UavModel uav) {
+    if (id == 'alan_tarama') {
+      if (uav.action == 'ARRIVED' && !_alanTaramaArrivedAnnounced) {
+        _alanTaramaArrivedAnnounced = true;
+        assistant.say('Konuma ulaşıldı. Tarama başlıyor.');
+      }
+      if (uav.action != 'ARRIVED') _alanTaramaArrivedAnnounced = false;
+    }
+  }
+
+  // ── TESPİT OLAYLARI ──────────────────────────────────────────
+  void _listenDetectionEvents() {
+    FirebaseDatabase.instance
+        .ref('uavs/insan_takip/telemetry/human_detected')
+        .onValue
+        .listen((event) {
+          final val = event.snapshot.value;
+          final detected = val == 1 || val == true;
+          if (detected && !_humanDetectedAnnounced) {
+            _humanDetectedAnnounced = true;
+            assistant.say('İnsan tespit edildi. Takip başlatıldı.');
+          }
+          if (!detected) _humanDetectedAnnounced = false;
+        });
+
+    FirebaseDatabase.instance
+        .ref('uavs/nesne_tespit/telemetry/object_detected')
+        .onValue
+        .listen((event) {
+          final val = event.snapshot.value;
+          final detected = val == 1 || val == true;
+          if (detected) assistant.say('Nesne tespit edildi.');
+        });
+  }
+
+  // Drone ID → Türkçe görünen isim
+  String _droneDisplayName(String id) {
+    switch (id) {
+      case 'nesne_tespit':
+        return 'Nesne Tespit';
+      case 'insan_takip':
+        return 'İnsan Takibi';
+      case 'alan_tarama':
+        return 'Alan Tarama';
+      case 'kamikaze':
+        return 'Kamikaze';
+      case 'tasiyici':
+        return 'Taşıyıcı';
+      default:
+        return id;
+    }
+  }
+
   // ── FİREBASE STREAM ──────────────────────────────────────────
   void _startListeningToFirebase() {
     _firebaseService!.listenToUavs().listen((data) {
       uavList.assignAll(data);
       if (uavList.isNotEmpty && selectedUavId.value.isEmpty) {
-        selectedUavId.value = uavList.containsKey('tuna_1')
-            ? 'tuna_1'
+        selectedUavId.value = uavList.containsKey('nesne_tespit')
+            ? 'nesne_tespit'
             : uavList.keys.first;
       }
     }, onError: (e) => debugPrint('🚨 Firebase stream hatası: $e'));
