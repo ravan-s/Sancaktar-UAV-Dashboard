@@ -199,6 +199,7 @@ class AnaMenuEkrani extends StatelessWidget {
     if (uavId.contains("tasiyici")) return Colors.orange;
     if (uavId.contains("insan_takip")) return Colors.cyan;
     if (uavId.contains("alan_tarama")) return Colors.green;
+    if (uavId.contains("nesne_tespit")) return Colors.purpleAccent;
     return Colors.blueGrey;
   }
 
@@ -208,6 +209,8 @@ class AnaMenuEkrani extends StatelessWidget {
     if (uavId.contains("tasiyici")) return Icons.local_shipping;
     if (uavId.contains("insan_takip")) return Icons.person_search;
     if (uavId.contains("alan_tarama")) return Icons.radar;
+    if (uavId.contains("nesne_tespit"))
+      return Icons.remove_red_eye; // ← değişti
     return Icons.flight;
   }
 }
