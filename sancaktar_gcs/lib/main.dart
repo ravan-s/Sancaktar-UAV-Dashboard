@@ -214,8 +214,8 @@ class CommandCockpit extends StatelessWidget {
         child: FlutterMap(
           options: MapOptions(
             initialCenter: LatLng(
-              ctrl.currentUav?.lat ?? 38.0285,
-              ctrl.currentUav?.lon ?? 32.5115,
+              ctrl.currentUav?.safeLat ?? 38.0285,
+              ctrl.currentUav?.safeLon ?? 32.5115,
             ),
             initialZoom: 15,
             // ✅ Uzun basma buraya eklendi
@@ -446,6 +446,346 @@ class CommandCockpit extends StatelessWidget {
       );
 
   void _showManualLocationDialog(BuildContext context, UavController ctrl) {
+    // Taşıyıcı değilse eski tek-konum dialogu aç
+    if (ctrl.selectedUavId.value != 'tasiyici') {
+      _showSingleLocationDialog(context, ctrl);
+      return;
+    }
+
+    // Taşıyıcı için 4 dronun konumlarını al
+    final drones = [
+      {'id': 'kamikaze', 'label': 'KAMİKAZE', 'color': Colors.redAccent},
+      {
+        'id': 'nesne_tespit',
+        'label': 'NESNE TESPİT',
+        'color': Colors.blueAccent,
+      },
+      {
+        'id': 'insan_takip',
+        'label': 'İNSAN TAKİP',
+        'color': Colors.orangeAccent,
+      },
+      {
+        'id': 'alan_tarama',
+        'label': 'ALAN TARAMA',
+        'color': Colors.purpleAccent,
+      },
+    ];
+
+    final Map<String, TextEditingController> latCtrls = {};
+    final Map<String, TextEditingController> lonCtrls = {};
+    for (final d in drones) {
+      final id = d['id'] as String;
+      latCtrls[id] = TextEditingController();
+      lonCtrls[id] = TextEditingController();
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0D1621),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.blueAccent, width: 1),
+        ),
+        title: const Text(
+          'TAŞIYICI — BIRAKMA KONUMLARI',
+          style: TextStyle(
+            color: Colors.blueAccent,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.5,
+            fontSize: 13,
+          ),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: drones.map((d) {
+                final id = d['id'] as String;
+                final label = d['label'] as String;
+                final color = d['color'] as Color;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0A1521),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: color.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Drone başlığı
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            label,
+                            style: TextStyle(
+                              color: color,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      // Lat & Lon yan yana
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _coordField(
+                              controller: latCtrls[id]!,
+                              hint: 'Enlem',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _coordField(
+                              controller: lonCtrls[id]!,
+                              hint: 'Boylam',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('İPTAL', style: TextStyle(color: Colors.white38)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blueAccent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () {
+              // Validasyon
+              for (final d in drones) {
+                final id = d['id'] as String;
+                if (double.tryParse(latCtrls[id]!.text.trim()) == null ||
+                    double.tryParse(lonCtrls[id]!.text.trim()) == null) {
+                  Get.snackbar(
+                    'HATA',
+                    '${d['label']} için geçerli koordinat girin',
+                    backgroundColor: Colors.red.withOpacity(0.2),
+                    colorText: Colors.redAccent,
+                  );
+                  return;
+                }
+              }
+              Navigator.pop(ctx);
+              _showDropConfirmDialog(context, ctrl, drones, latCtrls, lonCtrls);
+            },
+            child: const Text(
+              'GÖNDER',
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Koordinat input alanı
+  Widget _coordField({
+    required TextEditingController controller,
+    required String hint,
+  }) {
+    return TextField(
+      controller: controller,
+      style: const TextStyle(color: Colors.white, fontSize: 12),
+      keyboardType: const TextInputType.numberWithOptions(
+        decimal: true,
+        signed: true,
+      ),
+      decoration: InputDecoration(
+        labelText: hint,
+        labelStyle: const TextStyle(color: Colors.white54, fontSize: 10),
+        hintText: hint == 'Enlem' ? '37.000000' : '32.000000',
+        hintStyle: const TextStyle(color: Colors.white24, fontSize: 10),
+        filled: true,
+        fillColor: const Color(0xFF060E18),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        enabledBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: Colors.white12),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: Colors.blueAccent),
+        ),
+      ),
+    );
+  }
+
+  // Onay dialogu
+  void _showDropConfirmDialog(
+    BuildContext context,
+    UavController ctrl,
+    List<Map<String, dynamic>> drones,
+    Map<String, TextEditingController> latCtrls,
+    Map<String, TextEditingController> lonCtrls,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0D1621),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.orange, width: 1),
+        ),
+        title: const Text(
+          'EMİN MİSİNİZ?',
+          style: TextStyle(
+            color: Colors.orange,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Aşağıdaki konumlar taşıyıcıya gönderilecek:',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            ...drones.map((d) {
+              final id = d['id'] as String;
+              final label = d['label'] as String;
+              final color = d['color'] as Color;
+              final lat = double.parse(
+                latCtrls[id]!.text.trim(),
+              ).toStringAsFixed(6);
+              final lon = double.parse(
+                lonCtrls[id]!.text.trim(),
+              ).toStringAsFixed(6);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '$lat, $lon',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'VAZGEÇ',
+              style: TextStyle(color: Colors.white38),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              // Firebase'e yaz
+              ctrl.sendDropMissionLocations({
+                for (final d in drones)
+                  d['id'] as String: {
+                    'lat': double.parse(
+                      latCtrls[d['id'] as String]!.text.trim(),
+                    ),
+                    'lon': double.parse(
+                      lonCtrls[d['id'] as String]!.text.trim(),
+                    ),
+                    'alt': 15.0,
+                  },
+              });
+              Get.snackbar(
+                '',
+                '',
+                snackPosition: SnackPosition.TOP,
+                backgroundColor: const Color(0xFF0D1621),
+                borderColor: Colors.orange,
+                borderWidth: 1,
+                duration: const Duration(seconds: 3),
+                titleText: const Text(
+                  'KONUMLAR GÖNDERİLDİ',
+                  style: TextStyle(
+                    color: Colors.orange,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+                messageText: const Text(
+                  'Taşıyıcı bırakma noktaları alındı.',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              );
+            },
+            child: const Text(
+              'EVET, GÖNDER',
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Eski tek dron konum dialogu (tasiyici dışındakiler için)
+  void _showSingleLocationDialog(BuildContext context, UavController ctrl) {
     final latCtrl = TextEditingController();
     final lonCtrl = TextEditingController();
     showDialog(
@@ -532,27 +872,6 @@ class CommandCockpit extends StatelessWidget {
               if (lat == null || lon == null) return;
               Navigator.pop(ctx);
               ctrl.sendTargetPosition(lat, lon);
-              Get.snackbar(
-                '',
-                '',
-                snackPosition: SnackPosition.TOP,
-                backgroundColor: const Color(0xFF0D1621),
-                borderColor: Colors.cyan,
-                borderWidth: 1,
-                duration: const Duration(seconds: 3),
-                titleText: const Text(
-                  'HEDEF KONUM GÖNDERİLDİ',
-                  style: TextStyle(
-                    color: Colors.cyan,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-                messageText: Text(
-                  'Lat: $lat  Lon: $lon',
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-              );
             },
             child: const Text(
               'KONUMU GÖNDER',

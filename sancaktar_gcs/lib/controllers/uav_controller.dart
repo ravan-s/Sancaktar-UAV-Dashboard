@@ -132,6 +132,18 @@ class UavController extends GetxController {
     }
   }
 
+  Future<void> sendDropMissionLocations(
+    Map<String, Map<String, dynamic>> locations,
+  ) async {
+    try {
+      await FirebaseDatabase.instance
+          .ref('uavs/tasiyici/mission')
+          .set(locations.map((key, val) => MapEntry('${key}_drop', val)));
+    } catch (e) {
+      debugPrint('Konum gönderme hatası: $e');
+    }
+  }
+
   void _listenConnectionStatus() {
     FirebaseDatabase.instance.ref('.info/connected').onValue.listen((event) {
       final connected = event.snapshot.value as bool? ?? false;

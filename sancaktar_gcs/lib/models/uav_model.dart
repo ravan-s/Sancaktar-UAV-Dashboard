@@ -40,29 +40,24 @@ class UavModel {
     this.radius,
   });
 
-  // ── JSON -> NESNE (Firebase'den Okurken) ─────────────────
   factory UavModel.fromJson(Map<dynamic, dynamic> json) {
-    final t = json['telemetry'] != null ? Map<dynamic, dynamic>.from(json['telemetry'] as Map) : {};
-    final s = json['status'] != null ? Map<dynamic, dynamic>.from(json['status'] as Map) : {};
-    final c = json['command'] != null ? Map<dynamic, dynamic>.from(json['command'] as Map) : {};
-
     return UavModel(
-      altitude:     (t['altitude']     as num?)?.toDouble() ?? 0.0,
-      battery:      (t['battery']      as num?)?.toInt()    ?? 0,
-      battery_volt: (t['battery_volt'] as num?)?.toDouble() ?? 0.0,
-      speed:        (t['speed']        as num?)?.toDouble() ?? 0.0,
-      lat:          (t['lat']          as num?)?.toDouble(),
-      lon:          (t['lon']          as num?)?.toDouble(),
-      gps_fix:      (t['gps_fix']      as num?)?.toInt()    ?? 0,
-      flightMode:   (s['flight_mode']         as String?) ?? 'UNKNOWN',
-      isArmed:      (s['is_armed']             as bool?)   ?? false,
-      connectionStrength: (s['connection_strength'] as num?)?.toInt() ?? 0,
-      action:       (c['action']      as String?),
-      isExecuted:   (c['is_executed'] as bool?)   ?? false,
-      targetLat:    (c['target_lat']  as num?)?.toDouble(),
-      targetLon:    (c['target_lon']  as num?)?.toDouble(),
-      targetId:     (c['target_id']   as String?),
-      radius:       (c['radius']      as num?)?.toInt(),
+      altitude: (json['alt_rel'] as num?)?.toDouble() ?? 0.0,
+      battery: (json['battery_level'] as num?)?.toInt() ?? 0,
+      battery_volt: (json['battery_voltage'] as num?)?.toDouble() ?? 0.0,
+      speed: (json['groundspeed'] as num?)?.toDouble() ?? 0.0,
+      lat: (json['lat'] as num?)?.toDouble(),
+      lon: (json['lon'] as num?)?.toDouble(),
+      gps_fix: (json['gps_fix'] as num?)?.toInt() ?? 0,
+      flightMode: (json['mode'] as String?) ?? 'UNKNOWN',
+      isArmed: (json['armed'] as bool?) ?? false,
+      connectionStrength: (json['satellites'] as num?)?.toInt() ?? 0,
+      action: (json['action'] as String?),
+      isExecuted: (json['is_executed'] as bool?) ?? false,
+      targetLat: (json['target_lat'] as num?)?.toDouble(),
+      targetLon: (json['target_lon'] as num?)?.toDouble(),
+      targetId: (json['target_id'] as String?),
+      radius: (json['radius'] as num?)?.toInt(),
     );
   }
 
@@ -96,8 +91,10 @@ class UavModel {
   }
 
   // Yardımcılar
-  bool get isBatteryLow      => battery < 20;
+  bool get isBatteryLow => battery < 20;
   bool get isBatteryCritical => battery < 10;
-  bool get isOnline          => connectionStrength > 0;
-  bool get hasLocation       => lat != null && lon != null;
+  bool get isOnline => connectionStrength > 0;
+  bool get hasLocation => lat != null && lon != null;
+  double? get safeLat => (lat == null || lat == 0.0) ? null : lat;
+  double? get safeLon => (lon == null || lon == 0.0) ? null : lon;
 }

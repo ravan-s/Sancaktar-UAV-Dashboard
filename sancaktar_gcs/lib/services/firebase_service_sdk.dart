@@ -3,6 +3,7 @@
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/material.dart';
 import '../models/uav_model.dart';
 import 'firebase_service.dart';
 
@@ -31,15 +32,23 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
     return FirebaseDatabase.instance.ref('uavs').onValue.map((event) {
       final result = <String, UavModel>{};
       final raw = event.snapshot.value as Map?;
-      if (raw == null) return result;
 
+      debugPrint('🔥 SDK RAW: $raw'); // EKLE
+
+      if (raw == null) return result;
       raw.forEach((key, value) {
         try {
-          result[key.toString()] = UavModel.fromJson(
-            Map<dynamic, dynamic>.from(value as Map),
+          final telemetry = Map<String, dynamic>.from(
+            value['telemetry'] as Map? ?? {},
           );
+          final status = Map<String, dynamic>.from(
+            value['status'] as Map? ?? {},
+          );
+          final merged = {...telemetry, ...status};
+          debugPrint('🔥 $key merged: $merged'); // EKLE
+          result[key.toString()] = UavModel.fromJson(merged);
         } catch (e) {
-          print('❌ Parse hatası ($key): $e');
+          debugPrint('❌ Parse hatası ($key): $e');
         }
       });
       return result;
@@ -159,7 +168,7 @@ class FirebaseServiceSdk extends FirebaseServiceBase {
       if (uavId == 'kamikaze') ...{'WAIT', 'ENGAGE'},
       if (uavId == 'tasiyici') 'DELIVER_CARGO',
       if (uavId == 'alan_tarama') 'PATTERN_SEARCH',
-      if (uavId == 'tuna_1') 'GO_TO_WAYPOINT',
+      if (uavId == 'nesne_tespit') 'GO_TO_WAYPOINT',
     };
     if (!allowed.contains(command)) {
       throw Exception('Geçersiz komut: $command');

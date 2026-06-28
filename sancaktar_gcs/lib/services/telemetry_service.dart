@@ -53,6 +53,8 @@ class FirebaseServiceRest extends FirebaseServiceBase {
 
         if (response.statusCode == 200) {
           final raw = json.decode(response.body);
+          debugPrint('🔥 RAW: $raw'); // BU SATIRI EKLE
+
           if (raw is Map) {
             final result = <String, UavModel>{};
             raw.forEach((droneId, value) {
@@ -66,6 +68,8 @@ class FirebaseServiceRest extends FirebaseServiceBase {
                     value['status'] as Map? ?? {},
                   );
                   final merged = {...telemetry, ...status};
+                  debugPrint('🔥 $droneId merged: $merged'); // BU SATIRI EKLE
+
                   if (merged.isNotEmpty) {
                     result[droneId.toString()] = UavModel.fromJson(merged);
                   }

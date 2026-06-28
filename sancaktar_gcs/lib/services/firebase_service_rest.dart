@@ -71,7 +71,7 @@ class FirebaseServiceRest extends FirebaseServiceBase {
     double lng, {
     double? altitude,
   }) async {
-    final action = uavId == 'tuna_1' ? 'GO_TO_WAYPOINT' : 'GOTO';
+    final action = uavId == 'nesne_tespit' ? 'GO_TO_WAYPOINT' : 'GOTO';
     await sendUavCommand(
       uavId,
       action,
