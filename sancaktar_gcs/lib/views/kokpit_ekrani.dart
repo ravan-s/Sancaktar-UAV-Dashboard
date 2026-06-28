@@ -56,7 +56,7 @@ class _UavProxy {
   double get heading => _uav?.heading ?? 0;
 
   // Pil
-  int get battery => _uav?.batteryPercent ?? 0;
+  int get battery => _uav?.battery ?? 0;
   double get batteryVolt => _uav?.battery_volt ?? 0;
 
   // Status

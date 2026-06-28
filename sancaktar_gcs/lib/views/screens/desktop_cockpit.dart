@@ -66,10 +66,10 @@ class _P {
   int get conn => uav?.connectionStrength ?? 0;
   bool get online => uav?.isOnline ?? false;
 
-  double get roll => 0;
-  double get pitch => 0;
-  double get heading => 0;
-  double get verticalSpeed => 0;
+  double get roll => uav?.roll ?? 0;
+  double get pitch => uav?.pitch ?? 0;
+  double get heading => uav?.heading ?? 0;
+  double get verticalSpeed => uav?.verticalSpeed ?? 0;
 }
 
 // ================================================================
@@ -484,15 +484,38 @@ class _InstrumentRow extends StatelessWidget {
               // Artık her biri için kendi özel "Derinlikli" widget'ını çağırıyoruz
               _instCard('AIRSPEED', Speedometer(value: p.speed), sf),
               SizedBox(width: 6 * sf),
-              _instCard('ATİTÜD', AttitudeGauge(roll: p.roll, pitch: p.pitch), sf),
+              _instCard(
+                'ATİTÜD',
+                AttitudeGauge(roll: p.roll, pitch: p.pitch),
+                sf,
+              ),
               SizedBox(width: 6 * sf),
               _instCard('ALTİMETRE', AltimeterGauge(altitude: p.altitude), sf),
               SizedBox(width: 6 * sf),
-              _instCard('YAW / RULO', YawGauge(roll: p.roll.toDouble(), battery: p.battery.toDouble(), armed: p.armed == 1), sf),
+              _instCard(
+                'YAW / RULO',
+                YawGauge(
+                  roll: p.roll.toDouble(),
+                  battery: p.battery.toDouble(),
+                  armed: p.armed == 1,
+                ),
+                sf,
+              ),
               SizedBox(width: 6 * sf),
-              _instCard('PUSULA', CompassGauge(heading: p.heading.toDouble(), gpsFix: p.gpsFix == 1), sf),
+              _instCard(
+                'PUSULA',
+                CompassGauge(
+                  heading: p.heading.toDouble(),
+                  gpsFix: p.gpsFix == 1,
+                ),
+                sf,
+              ),
               SizedBox(width: 6 * sf),
-              _instCard('VSI · D.HIZ', VSIGauge(verticalSpeed: p.verticalSpeed), sf),
+              _instCard(
+                'VSI · D.HIZ',
+                VSIGauge(verticalSpeed: p.verticalSpeed),
+                sf,
+              ),
             ],
           ),
         ),

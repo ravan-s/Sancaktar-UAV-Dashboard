@@ -1,5 +1,7 @@
 // lib/controllers/uav_controller.dart
 
+import 'dart:io';
+
 import 'package:firebase_database/firebase_database.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
@@ -13,6 +15,8 @@ import '../models/uav_model.dart';
 import 'auth_controller.dart';
 import '../services/firebase_service.dart';
 import '../services/firestore_log_service.dart';
+import '../services/system_tts_stub.dart'
+    if (dart.library.io) '../services/system_tts_io.dart';
 import 'package:flutter/foundation.dart';
 
 class UavController extends GetxController {
@@ -20,14 +24,9 @@ class UavController extends GetxController {
   final stt.SpeechToText _speech = stt.SpeechToText();
   final VoiceAssistant assistant = VoiceAssistant();
 
-  // ── DEĞİŞİKLİK 1: Lazy getter yerine doğrudan referans ──────
-  // Eski kod her çağrıda Get.find yapıyordu, başarısız olunca null
-  // dönüyor ve ?? 10 fallback'i yetki kontrolünü karıştırıyordu.
-  // Linux için null-safe getter
   AuthController? get _authOrNull =>
       isLinuxDesktop ? null : Get.find<AuthController>();
 
-  // Geriye dönük uyumluluk — Linux'ta çağrılmamalı
   AuthController get _auth => Get.find<AuthController>();
 
   int get _accessLevel =>
@@ -44,18 +43,19 @@ class UavController extends GetxController {
   // ── DURUM TAKİP ──────────────────────────────────────────────
   final Map<String, bool> _prevArmedState = {};
   bool _allLaunchedAnnounced = false;
-  bool _humanDetectedAnnounced = false;
   bool _alanTaramaArrivedAnnounced = false;
+
+  // ── TESPİT TAKİBİ (1/0 yükselen kenar) ───────────────────────
+  static const Set<String> _detectionDrones = {
+    'insan_takip',
+    'nesne_tespit',
+    'alan_tarama',
+  };
+  final Map<String, bool> _prevDetected = {};
 
   UavModel? get currentUav =>
       selectedUavId.value.isEmpty ? null : uavList[selectedUavId.value];
 
-  // ── DEĞİŞİKLİK 2: ?? fallback KALDIRILDI ────────────────────
-  // Eski: _auth?.userAccessLevel.value ?? 10
-  // ?? 10 olunca _auth null olduğunda 10 geliyordu ama bu seni
-  // yanıltıyordu — 10 >= 3 true'dur, yani komut geçmeli gibi
-  // görünüyordu ama _auth null olduğu için currentUid de boştu.
-  // Şimdi _auth her zaman dolu (AuthController önce register edilmeli).
   bool get isLinuxDesktop =>
       defaultTargetPlatform == TargetPlatform.linux && !kIsWeb;
 
@@ -63,7 +63,6 @@ class UavController extends GetxController {
   void onInit() {
     super.onInit();
 
-    // Linux'ta AuthController yok, sadece mobilde kontrol et
     if (!isLinuxDesktop && !Get.isRegistered<AuthController>()) {
       throw Exception('AuthController register edilmemiş!');
     }
@@ -72,7 +71,6 @@ class UavController extends GetxController {
     FirestoreLogService().start();
     _startListeningToFirebase();
 
-    // Linux'ta Firebase listener yok, bağlantı snackbar'ı da çalışmaz
     if (!isLinuxDesktop) {
       _listenConnectionStatus();
 
@@ -89,14 +87,10 @@ class UavController extends GetxController {
         _runFailSafeChecks(id, uav);
         _checkLaunchStatus(id, uav);
         _checkMissionEvents(id, uav);
+        _checkDetectionEvents(id, uav);
       });
       _checkAllLaunched(list);
     });
-
-    // Tespit olayları — sadece mobilde
-    if (!isLinuxDesktop) {
-      _listenDetectionEvents();
-    }
   }
 
   void addSelectedMarker(LatLng latLng) {
@@ -158,7 +152,6 @@ class UavController extends GetxController {
           isDismissible: false,
         );
       } else {
-        // Bağlantı geri gelince
         if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
         Get.snackbar(
           '🟢 BAĞLANDI',
@@ -223,29 +216,52 @@ class UavController extends GetxController {
     }
   }
 
-  // ── TESPİT OLAYLARI ──────────────────────────────────────────
-  void _listenDetectionEvents() {
-    FirebaseDatabase.instance
-        .ref('uavs/insan_takip/telemetry/human_detected')
-        .onValue
-        .listen((event) {
-          final val = event.snapshot.value;
-          final detected = val == 1 || val == true;
-          if (detected && !_humanDetectedAnnounced) {
-            _humanDetectedAnnounced = true;
-            assistant.say('İnsan tespit edildi. Takip başlatıldı.');
-          }
-          if (!detected) _humanDetectedAnnounced = false;
-        });
+  // ── TESPİT OLAYLARI (mobil + Linux, uavList üzerinden) ───────
+  // Bayrak 0→1 olunca bir kez bildirim + sesli asistan; 1→0 olunca sıfırlanır.
+  void _checkDetectionEvents(String id, UavModel uav) {
+    if (!_detectionDrones.contains(id)) return;
 
-    FirebaseDatabase.instance
-        .ref('uavs/nesne_tespit/telemetry/object_detected')
-        .onValue
-        .listen((event) {
-          final val = event.snapshot.value;
-          final detected = val == 1 || val == true;
-          if (detected) assistant.say('Nesne tespit edildi.');
-        });
+    final prev = _prevDetected[id] ?? false;
+    if (!prev && uav.detected) {
+      final (title, message) = _detectionTexts(id);
+      assistant.say(message);
+      _showDetectionNotification(id, title, message);
+    }
+    _prevDetected[id] = uav.detected;
+  }
+
+  // Drone ID → (bildirim başlığı, sesli/yazılı mesaj)
+  (String, String) _detectionTexts(String id) {
+    switch (id) {
+      case 'insan_takip':
+        return (
+          '🚨 İNSAN TESPİT EDİLDİ',
+          'İnsan tespit edildi. Takip başlatıldı.',
+        );
+      case 'nesne_tespit':
+        return ('🎯 NESNE TESPİT EDİLDİ', 'Nesne tespit edildi.');
+      case 'alan_tarama':
+        return (
+          '📡 ALAN TARAMA — HEDEF',
+          'Alan tarama bölgesinde hedef tespit edildi.',
+        );
+      default:
+        return ('TESPİT', 'Tespit edildi.');
+    }
+  }
+
+  void _showDetectionNotification(String id, String title, String message) {
+    Get.snackbar(
+      title,
+      message,
+      snackPosition: SnackPosition.TOP,
+      backgroundColor: Colors.red.withOpacity(0.9),
+      colorText: Colors.white,
+      duration: const Duration(seconds: 4),
+      icon: const Icon(Icons.warning_amber_rounded, color: Colors.white),
+      shouldIconPulse: true,
+      margin: const EdgeInsets.all(12),
+    );
   }
 
   // Drone ID → Türkçe görünen isim
@@ -285,7 +301,6 @@ class UavController extends GetxController {
 
   // ── KOMUT GÖNDER ─────────────────────────────────────────────
   void sendCommand(String commandType, {Map<String, dynamic>? extra}) {
-    // Her çağrıda fresh oku
     final int level = _accessLevel;
     final String uid = isLinuxDesktop
         ? 'DESKTOP_STATION'
@@ -412,9 +427,6 @@ class UavController extends GetxController {
       return;
     }
 
-    // ── DEĞİŞİKLİK 6: Seviye kontrolü tutarlı hale getirildi ────
-    // Eski kodda >= 1 yazıyordu ama snackbar'da "Seviye 4 gerekli"
-    // diyordu. Hangisi doğruysa onu bırak, burada >= 1 korundu.
     if (_accessLevel > 1) {
       _firebaseService?.sendTargetLocation(selectedUavId.value, lat, lng);
       Get.snackbar(
@@ -501,7 +513,69 @@ class UavController extends GetxController {
       Get.snackbar('GPS HATASI', 'Konum alınamadı: $e');
     }
   }
+
+  // ── ANLIK KONUM RAPORLA ──────────────────────────────────────
+  Future<void> sendInstantLocationFor(String droneId) async {
+    if (droneId.isEmpty) {
+      Get.snackbar('HATA', 'Lütfen bir dron seçin.');
+      return;
+    }
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm != LocationPermission.always &&
+          perm != LocationPermission.whileInUse) {
+        Get.snackbar(
+          'İZİN REDDEDİLDİ',
+          'GPS izni gereklidir.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.orange.withOpacity(0.8),
+          colorText: Colors.white,
+        );
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      final uid = isLinuxDesktop
+          ? 'DESKTOP_STATION'
+          : (_authOrNull?.currentUid.value ?? '');
+
+      await FirebaseDatabase.instance.ref('instant_locations/$droneId').set({
+        'lat': pos.latitude,
+        'lon': pos.longitude,
+        'accuracy': pos.accuracy,
+        'sent_by_uid': uid,
+        'timestamp': ServerValue.timestamp,
+      });
+
+      assistant.say('${_droneDisplayName(droneId)} anlık konumu gönderildi.');
+      Get.snackbar(
+        '📍 ANLIK KONUM GÖNDERİLDİ',
+        '${_droneDisplayName(droneId)} → '
+            '${pos.latitude.toStringAsFixed(6)}, '
+            '${pos.longitude.toStringAsFixed(6)}',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.green.withOpacity(0.85),
+        colorText: Colors.white,
+        duration: const Duration(seconds: 3),
+      );
+    } catch (e) {
+      Get.snackbar(
+        'GPS HATASI',
+        'Konum alınamadı: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.withOpacity(0.8),
+        colorText: Colors.white,
+      );
+    }
+  }
 }
+// uav_controller.dart'ın EN ALTINA koy (mevcut VoiceAssistant class'ını bununla değiştir)
 
 // ── SESLİ ASISTAN ─────────────────────────────────────────────
 class VoiceAssistant {
@@ -513,7 +587,7 @@ class VoiceAssistant {
 
   Future<void> _initTts() async {
     if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
-      debugPrint('ℹ️ TTS Linux desteklemiyor, konsola yazılacak.');
+      debugPrint('ℹ️ TTS Linux desteklemiyor, sistem TTS denenecek.');
       return;
     }
     try {
@@ -528,10 +602,34 @@ class VoiceAssistant {
   }
 
   Future<void> say(String text) async {
+    if (defaultTargetPlatform == TargetPlatform.linux && !kIsWeb) {
+      final ok = await speakViaSystem(text);
+      if (!ok) {
+        debugPrint('🔊 TTS (espeak/spd-say kur): $text');
+      }
+      return;
+    }
     if (_tts == null) {
       debugPrint('🔊 TTS: $text');
       return;
     }
     await _tts.speak(text);
+  }
+
+  /// Linux için sistem TTS (espeak veya spd-say)
+  Future<bool> speakViaSystem(String text) async {
+    try {
+      // spd-say dene
+      var result = await Process.run('spd-say', [text]);
+      if (result.exitCode == 0) return true;
+
+      // espeak dene
+      result = await Process.run('espeak', ['-v', 'tr', text]);
+      if (result.exitCode == 0) return true;
+
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 }

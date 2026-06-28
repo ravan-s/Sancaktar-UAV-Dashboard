@@ -30,10 +30,54 @@ class FirebaseServiceRest extends FirebaseServiceBase {
     }
   }
 
-  // ── 2. DRONE DİNLE ───────────────────────────────
+  // ── 2. DRONE DİNLE (REST polling) ────────────────
+  // SDK'da WebSocket var; REST'te yok, bu yüzden 2 sn'de bir
+  // GET /uavs.json ile çekip telemetry+status'u birleştirip yayınlıyoruz.
   @override
-  Stream<Map<String, UavModel>> listenToUavs() {
-    return Stream.value({});
+  Stream<Map<String, UavModel>> listenToUavs() async* {
+    while (true) {
+      yield await _fetchUavsOnce();
+      await Future.delayed(const Duration(seconds: 2));
+    }
+  }
+
+  Future<Map<String, UavModel>> _fetchUavsOnce() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$_dbUrl/uavs.json'))
+          .timeout(const Duration(seconds: 10));
+
+      if (res.statusCode != 200) {
+        print('❌ REST listen HTTP ${res.statusCode}');
+        return {};
+      }
+      if (res.body.isEmpty || res.body == 'null') return {};
+
+      final raw = jsonDecode(res.body) as Map<String, dynamic>?;
+      if (raw == null) return {};
+
+      final result = <String, UavModel>{};
+      raw.forEach((key, value) {
+        if (value is! Map) return;
+        // mode/armed/satellites TELEMETRY içinde; status sadece bridge bilgisi.
+        final telemetry = Map<String, dynamic>.from(
+          (value['telemetry'] as Map?) ?? {},
+        );
+        final status = Map<String, dynamic>.from(
+          (value['status'] as Map?) ?? {},
+        );
+        final merged = {...telemetry, ...status};
+        try {
+          result[key.toString()] = UavModel.fromJson(merged);
+        } catch (e) {
+          print('❌ REST parse ($key): $e');
+        }
+      });
+      return result;
+    } catch (e) {
+      print('❌ REST listen hatası: $e');
+      return {};
+    }
   }
 
   // ── 3. KOMUT GÖNDER ──────────────────────────────

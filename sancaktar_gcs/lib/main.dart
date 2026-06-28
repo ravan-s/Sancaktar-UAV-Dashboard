@@ -325,26 +325,86 @@ class CommandCockpit extends StatelessWidget {
 
   Widget _actions(BuildContext context, UavController ctrl) => Column(
     children: [
+      // ── ARM / DISARM ──
+      Row(
+        children: [
+          Expanded(
+            child: _btn(
+              'ARM',
+              Colors.greenAccent,
+              () => _confirmCommand(
+                context,
+                ctrl,
+                command: 'ARM',
+                label: 'ARM · MOTORLARI KUR',
+                color: Colors.green,
+                warning:
+                    'Pervaneler dönmeye hazır hale gelir. Çevreyi kontrol edin.',
+              ),
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: _btn(
+              'DISARM',
+              Colors.blueGrey,
+              () => _confirmCommand(
+                context,
+                ctrl,
+                command: 'DISARM',
+                label: 'DISARM · MOTORLARI KAPAT',
+                color: Colors.blueGrey,
+                warning: 'Motorlar durur. Dron HAVADAYSA düşer!',
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 15),
+      // ── TAKE OFF / LAND ──
       Row(
         children: [
           Expanded(
             child: _btn(
               'TAKE OFF',
               Colors.blue,
-              () => ctrl.sendCommand('TAKEOFF'),
+              () => _showTakeoffDialog(context, ctrl),
             ),
           ),
           const SizedBox(width: 15),
           Expanded(
-            child: _btn('LAND', Colors.red, () => ctrl.sendCommand('LAND')),
+            child: _btn(
+              'LAND',
+              Colors.red,
+              () => _confirmCommand(
+                context,
+                ctrl,
+                command: 'LAND',
+                label: 'LAND · İNİŞ',
+                color: Colors.red,
+                warning: 'Dron bulunduğu konumda iniş yapar.',
+              ),
+            ),
           ),
         ],
       ),
       const SizedBox(height: 15),
+      // ── RTL (EVE DÖN) / HOLD ──
       Row(
         children: [
           Expanded(
-            child: _btn('RTL', Colors.orange, () => ctrl.sendCommand('RTL')),
+            child: _btn(
+              'RTL · EVE DÖN',
+              Colors.orange,
+              () => _confirmCommand(
+                context,
+                ctrl,
+                command: 'RTL',
+                label: 'RTL · EVE DÖN',
+                color: Colors.orange,
+                warning: 'Dron kalkış (home) noktasına dönüp iniş yapar.',
+              ),
+            ),
           ),
           const SizedBox(width: 15),
           Expanded(
@@ -367,7 +427,7 @@ class CommandCockpit extends StatelessWidget {
             child: _btn(
               'ANLIK KONUM',
               Colors.green,
-              () => ctrl.sendMyCurrentLocation(),
+              () => _showInstantLocationDialog(context, ctrl),
             ),
           ),
         ],
@@ -444,6 +504,388 @@ class CommandCockpit extends StatelessWidget {
           style: TextStyle(color: color, fontWeight: FontWeight.bold),
         ),
       );
+
+  // ── DİKKATLİ KOMUT — onay diyaloğu ───────────────────────────
+  // Kritik komutlar (ARM/DISARM/LAND/RTL) önce onay ister; seçili dronu
+  // gösterir, uyarı verir. Onaylanınca ctrl.sendCommand yetki + gönderim yapar.
+  void _confirmCommand(
+    BuildContext context,
+    UavController ctrl, {
+    required String command,
+    required String label,
+    required Color color,
+    String? warning,
+    Map<String, dynamic>? extra,
+  }) {
+    final drone = ctrl.selectedUavId.value;
+    if (drone.isEmpty) {
+      Get.snackbar(
+        'HATA',
+        'Önce bir dron seçin.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.withOpacity(0.6),
+        colorText: Colors.white,
+      );
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0D1621),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: color, width: 1),
+        ),
+        title: Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  'Hedef dron: ',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                Text(
+                  drone.toUpperCase(),
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            if (warning != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.withOpacity(0.4)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.redAccent,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        warning,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('İPTAL', style: TextStyle(color: Colors.white38)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              ctrl.sendCommand(command, extra: extra);
+            },
+            child: const Text(
+              'GÖNDER',
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── TAKE OFF — irtifa girişli onay ──────────────────────────
+  void _showTakeoffDialog(BuildContext context, UavController ctrl) {
+    final drone = ctrl.selectedUavId.value;
+    if (drone.isEmpty) {
+      Get.snackbar(
+        'HATA',
+        'Önce bir dron seçin.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.withOpacity(0.6),
+        colorText: Colors.white,
+      );
+      return;
+    }
+    final altCtrl = TextEditingController(text: '10');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0D1621),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.blue, width: 1),
+        ),
+        title: const Text(
+          'TAKE OFF · KALKIŞ',
+          style: TextStyle(
+            color: Colors.blue,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  'Hedef dron: ',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                Text(
+                  drone.toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.blue,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: altCtrl,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              decoration: InputDecoration(
+                labelText: 'Kalkış irtifası (metre)',
+                labelStyle: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 11,
+                ),
+                filled: true,
+                fillColor: const Color(0xFF060E18),
+                enabledBorder: const OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white12),
+                ),
+                focusedBorder: const OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.blue),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.withOpacity(0.4)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.redAccent,
+                    size: 18,
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Pervaneler dönecek ve dron yükselecek. Alanı boşaltın.',
+                      style: TextStyle(color: Colors.white70, fontSize: 11),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('İPTAL', style: TextStyle(color: Colors.white38)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () {
+              final alt = double.tryParse(altCtrl.text.trim());
+              if (alt == null || alt <= 0) {
+                Get.snackbar(
+                  'HATA',
+                  'Geçerli bir irtifa girin.',
+                  snackPosition: SnackPosition.BOTTOM,
+                  backgroundColor: Colors.red.withOpacity(0.6),
+                  colorText: Colors.white,
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              ctrl.sendCommand('TAKEOFF', extra: {'altitude': alt});
+            },
+            child: const Text(
+              'KALK',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── ANLIK KONUM — HANGİ DRON? ────────────────────────────────
+  // Uygulama 5 telefonda; her arkadaş bu diyalogdan kendi dronunu seçer,
+  // bu telefonun anlık GPS konumu seçilen dron için Firebase'e gönderilir.
+  // Hepsinin doldurulması gerekmez — her telefon sadece bir dron gönderir.
+  void _showInstantLocationDialog(BuildContext context, UavController ctrl) {
+    const drones = [
+      {'id': 'tasiyici', 'label': 'TAŞIYICI', 'color': Colors.blueAccent},
+      {'id': 'kamikaze', 'label': 'KAMİKAZE', 'color': Colors.redAccent},
+      {
+        'id': 'insan_takip',
+        'label': 'İNSAN TAKİP',
+        'color': Colors.orangeAccent,
+      },
+      {
+        'id': 'nesne_tespit',
+        'label': 'NESNE TESPİT',
+        'color': Colors.cyanAccent,
+      },
+      {
+        'id': 'alan_tarama',
+        'label': 'ALAN TARAMA',
+        'color': Colors.purpleAccent,
+      },
+    ];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0D1621),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.green, width: 1),
+        ),
+        title: const Text(
+          'ANLIK KONUM GÖNDER',
+          style: TextStyle(
+            color: Colors.green,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.5,
+            fontSize: 13,
+          ),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Hangi dronun konumunu göndermek istersiniz?',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Bu telefonun anlık GPS konumu seçilen dron için gönderilir.',
+                style: TextStyle(color: Colors.white30, fontSize: 10),
+              ),
+              const SizedBox(height: 14),
+              ...drones.map((d) {
+                final id = d['id'] as String;
+                final label = d['label'] as String;
+                final color = d['color'] as Color;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: color.withOpacity(0.5)),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        ctrl.sendInstantLocationFor(id);
+                      },
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            label,
+                            style: TextStyle(
+                              color: color,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          const Spacer(),
+                          Icon(
+                            Icons.my_location,
+                            color: color.withOpacity(0.8),
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('KAPAT', style: TextStyle(color: Colors.white38)),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _showManualLocationDialog(BuildContext context, UavController ctrl) {
     // Taşıyıcı değilse eski tek-konum dialogu aç
