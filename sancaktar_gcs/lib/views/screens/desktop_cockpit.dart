@@ -460,9 +460,6 @@ class _DroneStatusBar extends StatelessWidget {
   }
 }
 
-// ================================================================
-//  GÖSTERGE SIRASI
-// ================================================================
 class _InstrumentRow extends StatelessWidget {
   final _P p;
   final double sf;
@@ -470,72 +467,94 @@ class _InstrumentRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      final instH = (MediaQuery.of(context).size.height * 0.30).clamp(
-        140.0,
-        320.0,
-      );
-      return SizedBox(
-        height: instH,
-        child: Padding(
-          padding: EdgeInsets.all(6 * sf),
-          child: Row(
-            children: [
-              // Artık her biri için kendi özel "Derinlikli" widget'ını çağırıyoruz
-              _instCard('AIRSPEED', Speedometer(value: p.speed), sf),
-              SizedBox(width: 6 * sf),
-              _instCard(
-                'ATİTÜD',
-                AttitudeGauge(roll: p.roll, pitch: p.pitch),
-                sf,
-              ),
-              SizedBox(width: 6 * sf),
-              _instCard('ALTİMETRE', AltimeterGauge(altitude: p.altitude), sf),
-              SizedBox(width: 6 * sf),
-              _instCard(
-                'YAW / RULO',
-                YawGauge(
-                  roll: p.roll.toDouble(),
-                  battery: p.battery.toDouble(),
-                  armed: p.armed == 1,
+    final instH = (MediaQuery.of(context).size.height * 0.30).clamp(
+      140.0,
+      320.0,
+    );
+    return SizedBox(
+      height: instH,
+      child: Padding(
+        padding: EdgeInsets.all(6 * sf),
+        child: Row(
+          children: [
+            _instCard(
+              'AIRSPEED',
+              Obx(() => RepaintBoundary(child: Speedometer(value: p.speed))),
+              sf,
+            ),
+            SizedBox(width: 6 * sf),
+            _instCard(
+              'ATİTÜD',
+              Obx(
+                () => RepaintBoundary(
+                  child: AttitudeGauge(roll: p.roll, pitch: p.pitch),
                 ),
-                sf,
               ),
-              SizedBox(width: 6 * sf),
-              _instCard(
-                'PUSULA',
-                CompassGauge(
-                  heading: p.heading.toDouble(),
-                  gpsFix: p.gpsFix == 1,
+              sf,
+            ),
+            SizedBox(width: 6 * sf),
+            _instCard(
+              'ALTİMETRE',
+              Obx(
+                () => RepaintBoundary(
+                  child: AltimeterGauge(altitude: p.altitude),
                 ),
-                sf,
               ),
-              SizedBox(width: 6 * sf),
-              _instCard(
-                'VSI · D.HIZ',
-                VSIGauge(verticalSpeed: p.verticalSpeed),
-                sf,
+              sf,
+            ),
+            SizedBox(width: 6 * sf),
+            _instCard(
+              'YAW / RULO',
+              Obx(
+                () => RepaintBoundary(
+                  child: YawGauge(
+                    roll: p.roll.toDouble(),
+                    battery: p.battery.toDouble(),
+                    armed: p.armed == 1,
+                  ),
+                ),
               ),
-            ],
-          ),
+              sf,
+            ),
+            SizedBox(width: 6 * sf),
+            _instCard(
+              'PUSULA',
+              Obx(
+                () => RepaintBoundary(
+                  child: CompassGauge(
+                    heading: p.heading.toDouble(),
+                    gpsFix: p.gpsFix == 1,
+                  ),
+                ),
+              ),
+              sf,
+            ),
+            SizedBox(width: 6 * sf),
+            _instCard(
+              'VSI · D.HIZ',
+              Obx(
+                () => RepaintBoundary(
+                  child: VSIGauge(verticalSpeed: p.verticalSpeed),
+                ),
+              ),
+              sf,
+            ),
+          ],
         ),
-      );
-    });
+      ),
+    );
   }
 
-  // Geliştirilmiş, derinlikli Kart yapısı
   Widget _instCard(String label, Widget child, double sf) {
     return Expanded(
       child: Container(
         decoration: BoxDecoration(
-          color: _C.card, // Senin mevcut _C.card rengin
-          // Bordo ağırlıklı derinlikli border
+          color: _C.card,
           border: Border.all(
             color: const Color(0xFF800020).withOpacity(0.4),
             width: 1.5,
           ),
           borderRadius: BorderRadius.circular(12 * sf),
-          // "Havada duruyormuş" hissi veren dış gölge
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.6),
@@ -562,9 +581,7 @@ class _InstrumentRow extends StatelessWidget {
             Expanded(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(4 * sf, 0, 4 * sf, 6 * sf),
-                child: Center(
-                  child: child,
-                ), // Painter yerine artık widget'ın kendisini koyuyoruz
+                child: Center(child: child),
               ),
             ),
           ],
@@ -577,21 +594,37 @@ class _InstrumentRow extends StatelessWidget {
 // ================================================================
 //  HARİTA
 // ================================================================
-class _MapBox extends StatelessWidget {
+class _MapBox extends StatefulWidget {
   final _P p;
   const _MapBox({required this.p, super.key});
+  @override
+  State<_MapBox> createState() => _MapBoxState();
+}
+
+class _MapBoxState extends State<_MapBox> {
+  final _mapCtrl = fm.MapController();
 
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final markers = p.ctrl.uavList.entries.map((e) {
-        final sel = p.ctrl.selectedUavId.value == e.key;
+      final uav = widget.p.ctrl.currentUav;
+      final lat = uav?.safeLat;
+      final lon = uav?.safeLon;
+
+      if (lat != null && lon != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _mapCtrl.move(LatLng(lat, lon), _mapCtrl.camera.zoom);
+        });
+      }
+
+      final markers = widget.p.ctrl.uavList.entries.map((e) {
+        final sel = widget.p.ctrl.selectedUavId.value == e.key;
         return fm.Marker(
-          point: LatLng(e.value.lat ?? 38.0285, e.value.lon ?? 32.5115),
+          point: LatLng(e.value.safeLat ?? 38.0269, e.value.safeLon ?? 32.5097),
           width: sel ? 40 : 28,
           height: sel ? 40 : 28,
           child: GestureDetector(
-            onTap: () => p.ctrl.selectUav(e.key),
+            onTap: () => widget.p.ctrl.selectUav(e.key),
             child: Icon(
               Icons.navigation,
               color: sel ? _C.red : _C.cyan,
@@ -612,8 +645,9 @@ class _MapBox extends StatelessWidget {
           child: Stack(
             children: [
               fm.FlutterMap(
-                options: fm.MapOptions(
-                  initialCenter: LatLng(p.lat ?? 38.0285, p.lon ?? 32.5115),
+                mapController: _mapCtrl,
+                options: const fm.MapOptions(
+                  initialCenter: LatLng(38.0269, 32.5097),
                   initialZoom: 15,
                 ),
                 children: [
@@ -651,7 +685,7 @@ class _MapBox extends StatelessWidget {
                   ),
                 ),
               ),
-              if (p.lat != null)
+              if (lat != null)
                 Positioned(
                   bottom: 8,
                   left: 10,
@@ -665,7 +699,7 @@ class _MapBox extends StatelessWidget {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      '${p.lat!.toStringAsFixed(6)}°N · ${p.lon!.toStringAsFixed(6)}°E',
+                      '${lat.toStringAsFixed(6)}°N · ${lon!.toStringAsFixed(6)}°E',
                       style: const TextStyle(
                         color: _C.white,
                         fontSize: 10,
@@ -1458,7 +1492,7 @@ class AirspeedPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(AirspeedPainter o) => o.speed != speed;
+  bool shouldRepaint(AirspeedPainter o) => true;
 }
 
 class AttitudePainter extends CustomPainter {
@@ -1567,7 +1601,7 @@ class AttitudePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(AttitudePainter o) => o.roll != roll || o.pitch != pitch;
+  bool shouldRepaint(AttitudePainter o) => true;
 }
 
 class AltimeterPainter extends CustomPainter {
@@ -1633,7 +1667,7 @@ class AltimeterPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(AltimeterPainter o) => o.alt != alt;
+  bool shouldRepaint(AltimeterPainter o) => true;
 }
 
 class YawPainter extends CustomPainter {
@@ -1753,8 +1787,7 @@ class YawPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(YawPainter o) =>
-      o.roll != roll || o.battery != battery || o.armed != armed;
+  bool shouldRepaint(YawPainter o) => true;
 }
 
 class HeadingPainter extends CustomPainter {
@@ -1842,8 +1875,7 @@ class HeadingPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(HeadingPainter o) =>
-      o.heading != heading || o.gpsFix != gpsFix;
+  bool shouldRepaint(HeadingPainter o) => true;
 }
 
 class VSIPainter extends CustomPainter {
@@ -1929,5 +1961,5 @@ class VSIPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(VSIPainter o) => o.vs != vs;
+  bool shouldRepaint(VSIPainter o) => true;
 }
